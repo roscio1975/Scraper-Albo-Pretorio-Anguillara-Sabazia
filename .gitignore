@@ -1,0 +1,11 @@
+# Ignore OS-generated files
+.DS_Store
+
+#Ignore venv
+venv/
+
+#ignore file generati
+risultati/
+download_atti/
+scraper_albo.log
+
