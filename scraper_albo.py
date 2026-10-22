@@ -8,6 +8,7 @@ Requisiti:
     pip install -r requirements.txt
     playwright install chromium
     ollama pull <modello>            # solo per i riassunti (Ollama deve essere attivo)
+    brew install tesseract tesseract-lang   # solo per l'OCR dei PDF scansionati (macOS)
 
 Uso (python scraper_albo.py --help per l'elenco completo):
     python scraper_albo.py                                  # link + download dei PDF

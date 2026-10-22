@@ -7,7 +7,7 @@ import argparse
 import logging
 from datetime import date, datetime
 
-from .config import DESCRIZIONI_ESCLUSE, LOG_FILE, MODELLO_LOCALE
+from .config import DESCRIZIONI_ESCLUSE, LOG_FILE, MODELLO_LOCALE, OCR_LINGUA, OLLAMA_URL
 from .debug import debug_modale
 from .log import configura_logging, logger
 from .pipeline import stampa_link_pdf
@@ -80,7 +80,7 @@ def _crea_parser() -> argparse.ArgumentParser:
     princ.add_argument(
         "--debug", default=False,
         help="modalità debug: salva HTML e screenshot della modale della prima riga "
-        "(browser visibile) ed esce, senza scaricare nulla", **bool_kw,
+        "ed esce, senza scaricare nulla (browser visibile se c'è uno schermo)", **bool_kw,
     )
     princ.add_argument(
         "--scarica", default=True,
@@ -109,6 +109,20 @@ def _crea_parser() -> argparse.ArgumentParser:
         "--modello", default=MODELLO_LOCALE,
         help="modello Ollama usato per i riassunti con --riassumi true "
         "(nome come in `ollama list`, es. gemma3:12b)",
+    )
+    altre.add_argument(
+        "--ocr", default=True,
+        help="legge con l'OCR i PDF scansionati prima di riassumerli (richiede Tesseract)",
+        **bool_kw,
+    )
+    altre.add_argument(
+        "--ocr-lingua", default=OCR_LINGUA, metavar="LINGUA",
+        help="lingua/e di Tesseract per l'OCR, es. ita oppure ita+eng",
+    )
+    altre.add_argument(
+        "--ollama-url", default=OLLAMA_URL, metavar="URL",
+        help="indirizzo del server Ollama (default: variabile d'ambiente OLLAMA_URL, "
+        "altrimenti locale)",
     )
     altre.add_argument(
         "--escludi", action="append", metavar="DESCRIZIONE",
@@ -149,7 +163,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.debug(f"Argomenti: {vars(args)}")
 
     if args.debug:
-        debug_modale(headless=False)
+        debug_modale()
         return
 
     atti = stampa_link_pdf(
@@ -161,6 +175,9 @@ def main(argv: list[str] | None = None) -> None:
         campo=args.campo,
         riassumi=args.riassumi,
         modello=args.modello,
+        ollama_url=args.ollama_url,
+        ocr=args.ocr,
+        ocr_lingua=args.ocr_lingua,
         escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
     )
 
