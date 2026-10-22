@@ -3,7 +3,7 @@
 
 #Ignore venv
 venv/
-
+albo_scraper/__pycache__/
 #ignore file generati
 risultati/
 download_atti/
