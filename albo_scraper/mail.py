@@ -46,26 +46,17 @@ def invia_report(file_percorso: Path) -> None:
             disposition="attachment"
         )
     # 4. Invia la mail
-
     try:
-        # Connessione al server SMTP di Gmail con TLS
+        # Connessione al server SMTP
         logger.debug(f"Password: {SMTP_PASSWORD}")
         logger.debug(f"Messaggio: {msg}")
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.set_debuglevel(1)
+            #scommentare per debuggare problemi nell'invio della mail 
+            #server.set_debuglevel(1)
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
-            print("Email inviata con successo!")
+            logger.info("Email inviata con successo!")
     except Exception as e:
-        print(f"Errore durante l'invio dell'email: {e}")
-    #try:
-        #logger.info(f"Invio email a {len(destinatari)} destinatari...")
-        #
-        # Usiamo SMTP_SSL invece di SMTP + starttls()
-        #with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-        #    server.login(SMTP_USER, SMTP_PASSWORD)
-        #    server.send_message(msg)
-        #logger.info("Email inviata con successo.")
-    #except Exception as e:
-    #    logger.error(f"Errore durante l'invio della mail: {e}", exc_info=True)
+        logger.error(f"Errore durante l'invio dell'email: {e}")
+   
