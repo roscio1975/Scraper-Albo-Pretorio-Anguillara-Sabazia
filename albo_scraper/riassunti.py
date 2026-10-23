@@ -93,6 +93,7 @@ def riassumi_pdf_locale(
             {"role": "user", "content": f"{istruzioni}\n\nTESTO DELL'ATTO:\n{testo}"}
         ],
     }
+    logger.debug(f"PAYLOAD:  {payload}")
     richiesta = urllib.request.Request(
         f"{url}/api/chat",
         data=json.dumps(payload).encode("utf-8"),
