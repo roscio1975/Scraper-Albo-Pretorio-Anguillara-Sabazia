@@ -77,9 +77,6 @@ esempi:
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
 ```
-##Help
-
-
 
 Il risultato è `tabella_atti.html` (cambia nome con `--output`); PDF e log finiscono nella
 cartella di lavoro (`download_atti/`, `scraper_albo.log`).
