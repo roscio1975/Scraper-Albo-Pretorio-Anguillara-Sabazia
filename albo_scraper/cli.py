@@ -148,6 +148,10 @@ def _crea_parser() -> argparse.ArgumentParser:
         + ", ".join(DESCRIZIONI_ESCLUSE),
     )
 
+    altre.add_argument(
+        "--max-atti", type=int, help="Numero massimo di atti da processare (dal più recente)",
+    )
+
     return parser
 
 
@@ -197,6 +201,7 @@ def main(argv: list[str] | None = None) -> None:
         ocr_lingua=args.ocr_lingua,
         stato_file=args.stato or None,
         ignora_stato=args.ignora_stato,
+        max_atti=args.max_atti,
         escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
     )
 

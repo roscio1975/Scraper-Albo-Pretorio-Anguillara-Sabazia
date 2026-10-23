@@ -138,6 +138,7 @@ def stampa_link_pdf(
     ocr_lingua: str = OCR_LINGUA,
     stato_file: str | Path | None = STATO_FILE,
     ignora_stato: bool = False,
+    max_atti: int | None = None,
 ) -> list[dict]:
     """
     Legge la tabella, stampa i link dei PDF di ogni atto e restituisce i dati.
@@ -192,6 +193,13 @@ def stampa_link_pdf(
                     f"Filtro per data ({campo}, dal={dal}, al={al}): "
                     f"{len(atti)} atti su {totale}"
                 )
+            
+            if max_atti is not None:
+                # Ordiniamo per data_inizio (dal più recente al più vecchio)
+                # Usiamo date.min come fallback se la data è mancante
+                atti.sort(key=lambda x: x["data_inizio"] or date.min, reverse=True)
+                atti = atti[:max_atti]
+                logger.info(f"Limitati ai {max_atti} atti più recenti")
 
             for atto in atti:
                 atto["link_pdf"] = ottieni_link_pdf_atto(
