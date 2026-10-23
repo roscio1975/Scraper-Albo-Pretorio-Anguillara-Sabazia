@@ -69,7 +69,6 @@ import os
 SMTP_SERVER = "smtp.mail.ovh.net"
 SMTP_PORT = 587
 SMTP_USER = "info@granfacucinaletteraria.it"
-# È meglio non scrivere la password qui, ma caricarla come variabile d'ambiente
-SMTP_PASSWORD = "Email10ita!"#os.environ.get("SMTP_PASSWORD") 
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") 
 EMAIL_FROM = "info@granfacucinaletteraria.it"
 RECEIPTS_FILE = "receipts.txt"
