@@ -31,7 +31,7 @@ def invia_report(file_percorso: Path) -> None:
     msg["Subject"] = "Ultimi atti sull’albo Pretorio"
     msg["From"] = EMAIL_FROM
     msg["To"] = ", ".join(destinatari)
-    msg.set_content(f"Gentili tutti,\n\nIn allegato la tabella aggiornata degli atti pubblicati sull'albo pretorio.\n\nCordiali saluti.")
+    msg.set_content(f"Ciao a tutti,\n\nIn allegato la tabella aggiornata degli atti pubblicati sull'albo pretorio.\n\nHast Siempre!.")
 
     # 3. Aggiungi l'allegato
     with open(file_percorso, "rb") as f:
