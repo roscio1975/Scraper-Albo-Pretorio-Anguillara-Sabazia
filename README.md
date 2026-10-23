@@ -119,7 +119,7 @@ riassunto (`MAX_CARATTERI`).
 Notifiche via Email
 Attivando l'opzione --invia-mail, lo script invierà automaticamente il file HTML generato (il report degli atti) a tutti i destinatari elencati in un file locale.
 
-#Configurazione:
+**Configurazione:**
 
 Destinatari: Crea un file chiamato receipts.txt nella cartella principale del progetto. Ogni riga deve contenere un indirizzo email valido (es. utente@esempio.it).
 Server SMTP: Il software utilizza un server SMTP per l'invio. Assicurati di configurare correttamente le credenziali (server, porta, utente e password) nel codice o nelle variabili d'ambiente.
