@@ -1,6 +1,6 @@
 # Scraper albo pretorio
 
-Legge gli atti pubblicati sull'albo (cloud.urbi.it, Comune di Anguillara Sabazia),
+Legge gli atti pubblicati sull'albo (cloud.urbi.it, Comune di Anguillara Sabazia, ma dovrebbe essere compatibili con tutti gli albi pretori che usano la piattaforma ministeriale cloud.urbi)
 scarica i PDF allegati, li riassume con un LLM locale (Ollama) e scrive una tabella HTML.
 Opzioni complete: `python scraper_albo.py --help`.
 
