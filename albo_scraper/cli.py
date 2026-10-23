@@ -7,7 +7,14 @@ import argparse
 import logging
 from datetime import date, datetime
 
-from .config import DESCRIZIONI_ESCLUSE, LOG_FILE, MODELLO_LOCALE, OCR_LINGUA, OLLAMA_URL
+from .config import (
+    DESCRIZIONI_ESCLUSE,
+    LOG_FILE,
+    MODELLO_LOCALE,
+    OCR_LINGUA,
+    OLLAMA_URL,
+    STATO_FILE,
+)
 from .debug import debug_modale
 from .log import configura_logging, logger
 from .pipeline import stampa_link_pdf
@@ -111,6 +118,16 @@ def _crea_parser() -> argparse.ArgumentParser:
         "(nome come in `ollama list`, es. gemma3:12b)",
     )
     altre.add_argument(
+        "--stato", default=STATO_FILE, metavar="FILE",
+        help="file JSON che ricorda i documenti già scaricati e riassunti, per non rifarli "
+        "(stringa vuota = non usare la memoria)",
+    )
+    altre.add_argument(
+        "--ignora-stato", default=False,
+        help="rifà tutto anche per i documenti già registrati (il file di stato viene "
+        "comunque aggiornato)", **bool_kw,
+    )
+    altre.add_argument(
         "--ocr", default=True,
         help="legge con l'OCR i PDF scansionati prima di riassumerli (richiede Tesseract)",
         **bool_kw,
@@ -178,6 +195,8 @@ def main(argv: list[str] | None = None) -> None:
         ollama_url=args.ollama_url,
         ocr=args.ocr,
         ocr_lingua=args.ocr_lingua,
+        stato_file=args.stato or None,
+        ignora_stato=args.ignora_stato,
         escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
     )
 

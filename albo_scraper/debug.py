@@ -14,7 +14,7 @@ from .sito import apri_modale, apri_tabella, crea_contesto
 
 
 def _senza_schermo() -> bool:
-    """True su Linux senza server grafico (tipicamente Docker o un server)."""
+    """True su Linux senza server grafico (tipicamente un server)."""
     return sys.platform.startswith("linux") and not (
         os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
     )
@@ -28,7 +28,7 @@ def debug_modale(
 ) -> None:
     """
     Salva HTML e screenshot della modale 'Pubblicazione' di una riga.
-    headless=None: browser visibile, tranne dove non c'è uno schermo (Docker, server).
+    headless=None: browser visibile, tranne dove non c'è uno schermo (es. un server).
     """
     if headless is None:
         headless = _senza_schermo()

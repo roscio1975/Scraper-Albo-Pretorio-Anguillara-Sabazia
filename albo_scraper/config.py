@@ -38,10 +38,11 @@ FORMATO_DATA = "%Y-%m-%d %H:%M:%S"
 PROMPT_RIASSUNTO = (
     "Riassumi in italiano, in al massimo {max_righe} righe, il contenuto di questo "
     "atto amministrativo. Indica l'oggetto, i soggetti coinvolti e, se presenti, "
-    "importi e scadenze, facendo particolare attenzione alla determina. Rispondi solo con il riassunto, senza introduzioni."
+    "importi e scadenze. Rispondi solo con il riassunto, senza introduzioni."
 )
 
-# Indirizzo di Ollama: variabile d'ambiente OLLAMA_URL (utile in Docker) oppure locale.
+# Indirizzo di Ollama: variabile d'ambiente OLLAMA_URL (utile se gira su un altro
+# computer) oppure locale.
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 MODELLO_LOCALE = "llama3.1:8b"  # un modello già scaricato: controlla con `ollama list`
 MAX_CARATTERI = 12_000  # testo massimo inviato al modello (evita di sforare il contesto)
@@ -52,6 +53,10 @@ NUM_CTX = 8192  # finestra di contesto richiesta a Ollama
 OCR_LINGUA = "ita"  # lingua/e di Tesseract, es. "ita" oppure "ita+eng"
 OCR_DPI = 300  # risoluzione con cui le pagine vengono trasformate in immagine
 MIN_CARATTERI_PAGINA = 50  # sotto questa soglia una pagina è considerata una scansione
+
+
+# --- Memoria degli atti già elaborati
+STATO_FILE = "stato_atti.json"
 
 
 # --- Tabella finale

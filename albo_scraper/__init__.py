@@ -9,6 +9,7 @@ Flusso:
 4. opzionalmente scarica i PDF (quelli già presenti in locale non vengono riscaricati)
 5. opzionalmente genera un riassunto di ogni PDF con un LLM locale (Ollama); le pagine
    scansionate (senza testo) vengono prima lette con l'OCR
+   I documenti già elaborati in precedenza (registrati nello stato) vengono saltati.
 6. scrive un file HTML con la tabella: data atto, titolo, link remoto al PDF, riassunto
 
 Moduli:
@@ -19,6 +20,7 @@ Moduli:
     pdf         download dei PDF e riuso dei file locali
     riassunti   riassunti con Ollama
     ocr         OCR (Tesseract) delle pagine scansionate dei PDF
+    stato       memoria dei documenti già scaricati e riassunti (stato_atti.json)
     report      tabella HTML finale
     pipeline    flusso principale (stampa_link_pdf)
     debug       modalità debug (HTML/screenshot della modale)

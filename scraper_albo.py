@@ -19,6 +19,9 @@ Uso (python scraper_albo.py --help per l'elenco completo):
     python scraper_albo.py --riassumi true --modello gemma3:12b   # modello Ollama a scelta
     python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"  # altri allegati da escludere
 
+Memoria: i documenti già scaricati e riassunti sono registrati in stato_atti.json e non
+vengono rifatti (--ignora-stato true per rifare tutto, --stato "" per disattivarla).
+
 Log: ogni riga ha timestamp e livello (DEBUG/INFO/ERROR); destinazione e livello
 si scelgono con --log (console, file, entrambi) e --livello-log.
 """
