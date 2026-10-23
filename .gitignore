@@ -8,4 +8,5 @@ albo_scraper/__pycache__/
 risultati/
 download_atti/
 scraper_albo.log
+atti_processati.json
 
