@@ -64,6 +64,7 @@ altre opzioni:
                         descrizione di un allegato da escludere, come appare nella modale (si può ripetere); si aggiunge a quelle già escluse: VISTO CONTABILE PER LIQUIDAZIONI (default:
                         None)
   --max-atti MAX_ATTI   Numero massimo di atti da processare (dal più recente) (default: None)
+  --invia-mail          invia una mail con l'allegato alla tabella finale (default: False)
 
 esempi:
   python scraper_albo.py                                  link + download dei PDF
@@ -76,6 +77,8 @@ esempi:
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
+  python scraper_albo.py --max-atti 5 --invia-mail         processa gli ultimi 5 atti e invia la mail
+
 ```
 
 Il risultato è `tabella_atti.html` (cambia nome con `--output`); PDF e log finiscono nella
@@ -110,3 +113,15 @@ riassunto (`MAX_CARATTERI`).
 - Lingua: `--ocr-lingua ita` (default); per documenti misti `--ocr-lingua ita+eng`.
 - Serve Tesseract con i dati della lingua (vedi Installazione).
 - Per disattivarlo: `--ocr false` (le scansioni daranno un errore nel log, senza fermare il resto).
+
+## Notifiche via email
+
+Notifiche via Email
+Attivando l'opzione --invia-mail, lo script invierà automaticamente il file HTML generato (il report degli atti) a tutti i destinatari elencati in un file locale.
+
+Configurazione:
+
+Destinatari: Crea un file chiamato receipts.txt nella cartella principale del progetto. Ogni riga deve contenere un indirizzo email valido (es. utente@esempio.it).
+Server SMTP: Il software utilizza un server SMTP per l'invio. Assicurati di configurare correttamente le credenziali (server, porta, utente e password) nel codice o nelle variabili d'ambiente.
+Sicurezza: Se utilizzi servizi come Gmail o Outlook, è necessario generare una Password per le App (App Password) per consentire all'applicazione di inviare email.
+
