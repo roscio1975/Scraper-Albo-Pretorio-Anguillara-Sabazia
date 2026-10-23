@@ -77,6 +77,7 @@ def scrivi_tabella(atti: list[dict], percorso: str | Path) -> Path:
 
     corpo = []
     for data, titolo, url, riassunto in righe:
+        titolo = titolo.title()
         if url.startswith(("http://", "https://")):
             u = esc_html(url, quote=True)
             cella_link = f'<a href="{u}" target="_blank" rel="noopener" title="{u}">Apri PDF</a>'
