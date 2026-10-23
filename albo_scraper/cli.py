@@ -15,10 +15,13 @@ from .config import (
     OLLAMA_URL,
     STATO_FILE,
 )
+from pathlib import Path
 from .debug import debug_modale
 from .log import configura_logging, logger
 from .pipeline import stampa_link_pdf
 from .report import scrivi_tabella
+from .mail import invia_report
+
 
 
 def _bool(valore: str) -> bool:
@@ -152,6 +155,11 @@ def _crea_parser() -> argparse.ArgumentParser:
         "--max-atti", type=int, help="Numero massimo di atti da processare (dal più recente)",
     )
 
+    altre.add_argument(
+        "--invia-mail", default=True, 
+        help="invia una mail con l'allegato alla tabella finale", **bool_kw
+    )
+
     return parser
 
 
@@ -207,3 +215,5 @@ def main(argv: list[str] | None = None) -> None:
 
     percorso = scrivi_tabella(atti, args.output)
     logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
+    if args.invia_mail:
+        invia_report(Path(percorso))
