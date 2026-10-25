@@ -65,7 +65,8 @@ FORMATO_DATA = "%Y-%m-%d %H:%M:%S"
 PROMPT_RIASSUNTO = (
     "Riassumi in italiano, in al massimo {max_righe} righe, il contenuto di questo "
     "atto amministrativo. Indica l'oggetto, i soggetti coinvolti e, se presenti, "
-    "importi e scadenze. Rispondi solo con il riassunto, senza introduzioni."
+    "importi e scadenze facendo particolare attenzione alle sezioni appurato che e Determina. "
+    "Rispondi solo con il riassunto, senza introduzioni."
 )
 
 # Indirizzo di Ollama: variabile d'ambiente OLLAMA_URL (utile se gira su un altro
