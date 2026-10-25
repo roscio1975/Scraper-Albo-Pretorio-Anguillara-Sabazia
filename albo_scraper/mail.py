@@ -37,19 +37,20 @@ def invia_report(file_percorso: Path) -> None:
     with open(file_percorso, "rb") as f:
         file_data = f.read()
         file_name = file_percorso.name
-        # Aggiunto il parametro 'subtype' per compatibilità con le versioni più recenti di Python
         msg.add_attachment(
             file_data, 
-            maintype="application/octet-stream", 
-            subtype="octet-stream", 
+            maintype="application",
+            subtype="octet-stream",
             filename=file_name, 
             disposition="attachment"
         )
     # 4. Invia la mail
     try:
         # Connessione al server SMTP
-        logger.debug(f"Password: {SMTP_PASSWORD}")
-        logger.debug(f"Messaggio: {msg}")
+        logger.debug(
+            f"Invio a {len(destinatari)} destinatari tramite {SMTP_SERVER}:{SMTP_PORT} "
+            f"(allegato: {file_percorso.name}, {len(file_data)} byte)"
+        )
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             #scommentare per debuggare problemi nell'invio della mail 
             #server.set_debuglevel(1)
