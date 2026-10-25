@@ -1,6 +1,6 @@
 # Ignore OS-generated files
 .DS_Store
-
+.vscode/
 #Ignore venv
 venv/
 albo_scraper/__pycache__/
@@ -10,4 +10,6 @@ download_atti/
 scraper_albo.log
 atti_processati.json
 receipts.txt
+#debug files
+debug*
 

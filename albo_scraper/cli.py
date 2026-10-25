@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import date, datetime
+from pathlib import Path
 
 from .config import (
     DESCRIZIONI_ESCLUSE,
@@ -15,13 +16,11 @@ from .config import (
     OLLAMA_URL,
     STATO_FILE,
 )
-from pathlib import Path
 from .debug import debug_modale
 from .log import configura_logging, logger
+from .mail import invia_report
 from .pipeline import stampa_link_pdf
 from .report import scrivi_tabella
-from .mail import invia_report
-
 
 
 def _bool(valore: str) -> bool:
@@ -32,6 +31,17 @@ def _bool(valore: str) -> bool:
     if v in ("false", "f", "0", "no", "n"):
         return False
     raise argparse.ArgumentTypeError(f"valore non valido: {valore!r} (usa true o false)")
+
+
+def _intero_positivo(valore: str) -> int:
+    """Converte in intero maggiore di zero, per gli argomenti da riga di comando."""
+    try:
+        numero = int(valore)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"numero non valido: {valore!r}") from None
+    if numero < 1:
+        raise argparse.ArgumentTypeError("deve essere almeno 1")
+    return numero
 
 
 def _data_cli(valore: str) -> date:
@@ -60,6 +70,8 @@ esempi:
   python scraper_albo.py --debug true                     salva HTML/screenshot della modale
   python scraper_albo.py --output risultati.html         nome del file HTML con la tabella finale
   python scraper_albo.py --dal 01-10-2026 --al oggi       solo gli atti in quell'intervallo
+  python scraper_albo.py --max-atti 25                    i 25 atti più recenti (scorre le pagine)
+  python scraper_albo.py --max-pagine 3                   solo le prime 3 pagine della tabella
   python scraper_albo.py --riassumi true --modello gemma3:12b
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
@@ -89,8 +101,9 @@ def _crea_parser() -> argparse.ArgumentParser:
     )
     princ.add_argument(
         "--debug", default=False,
-        help="modalità debug: salva HTML e screenshot della modale della prima riga "
-        "ed esce, senza scaricare nulla (browser visibile se c'è uno schermo)", **bool_kw,
+        help="modalità debug: salva HTML e screenshot della tabella (con la paginazione) e "
+        "della modale della prima riga, poi esce senza scaricare nulla "
+        "(browser visibile se c'è uno schermo)", **bool_kw,
     )
     princ.add_argument(
         "--scarica", default=True,
@@ -107,6 +120,17 @@ def _crea_parser() -> argparse.ArgumentParser:
     altre.add_argument("--headless", default=True, help="browser senza finestra", **bool_kw)
     altre.add_argument("--dal", type=_data_cli, help="filtro data: da (GG-MM-AAAA o 'oggi')")
     altre.add_argument("--al", type=_data_cli, help="filtro data: a (GG-MM-AAAA o 'oggi')")
+    altre.add_argument(
+        "--max-atti", type=_intero_positivo, metavar="N",
+        help="elabora al massimo N atti, partendo dal più recente per data dell'atto e "
+        "passando alle pagine successive se serve (dopo l'eventuale filtro --dal/--al; "
+        "gli atti già elaborati contano nel limite)",
+    )
+    altre.add_argument(
+        "--max-pagine", type=_intero_positivo, metavar="N",
+        help="legge al massimo N pagine della tabella. Senza --max-atti, --dal/--al né "
+        "--max-pagine si legge solo la prima pagina",
+    )
     altre.add_argument(
         "--campo", choices=["data_inizio", "data_fine", "periodo"], default="data_inizio",
         help="campo su cui applicare il filtro per data",
@@ -145,19 +169,15 @@ def _crea_parser() -> argparse.ArgumentParser:
         "altrimenti locale)",
     )
     altre.add_argument(
+        "--invia-mail", default=True,
+        help="invia una mail con la tabella finale in allegato (destinatari in receipts.txt, "
+        "password SMTP nella variabile d'ambiente SMTP_PASSWORD)", **bool_kw,
+    )
+    altre.add_argument(
         "--escludi", action="append", metavar="DESCRIZIONE",
         help="descrizione di un allegato da escludere, come appare nella modale "
         "(si può ripetere); si aggiunge a quelle già escluse: "
         + ", ".join(DESCRIZIONI_ESCLUSE),
-    )
-
-    altre.add_argument(
-        "--max-atti", type=int, help="Numero massimo di atti da processare (dal più recente)",
-    )
-
-    altre.add_argument(
-        "--invia-mail", default=True, 
-        help="invia una mail con l'allegato alla tabella finale", **bool_kw
     )
 
     return parser
@@ -210,6 +230,7 @@ def main(argv: list[str] | None = None) -> None:
         stato_file=args.stato or None,
         ignora_stato=args.ignora_stato,
         max_atti=args.max_atti,
+        max_pagine=args.max_pagine,
         escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
     )
 

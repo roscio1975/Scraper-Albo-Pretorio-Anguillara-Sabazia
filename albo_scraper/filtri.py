@@ -58,3 +58,18 @@ def filtra_per_data(
             risultati.append(atto)
 
     return risultati
+
+
+def piu_recenti(atti: list[dict], massimo: int | None) -> list[dict]:
+    """
+    I `massimo` atti con la data più recente (data di inizio pubblicazione = "Data atto"),
+    ordinati dal più recente. A parità di data resta l'ordine della tabella; gli atti
+    senza data vengono considerati i più vecchi. `massimo=None`: nessun limite, nessun
+    cambio di ordine.
+    """
+    if massimo is None:
+        return list(atti)
+    if massimo < 1:
+        raise ValueError("il numero massimo di atti deve essere almeno 1")
+    ordinati = sorted(atti, key=lambda a: a.get("data_inizio") or date.min, reverse=True)
+    return ordinati[:massimo]
