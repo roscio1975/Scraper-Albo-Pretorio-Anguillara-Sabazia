@@ -10,6 +10,7 @@ download_atti/
 scraper_albo.log
 atti_processati.json
 receipts.txt
+diario_atti.txt
 #debug files
 debug*
 

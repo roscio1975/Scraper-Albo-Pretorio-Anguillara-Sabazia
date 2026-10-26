@@ -96,3 +96,12 @@ EMAIL_FROM = "info@granfacucinaletteraria.it"
 RECEIPTS_FILE = "receipts.txt"
 # --- Tabella finale
 COLONNE_TABELLA = ("Data atto", "Titolo atto", "Link remoto al PDF", "Riassunto")
+# --- Diario 
+PROMPT_DIARIO = """\
+Crea un resoconto amichevole, discorsivo e leggibile in italiano, adatto a un pubblico generico, dei seguenti atti amministrativi pubblicati sul sito dell'Albo Pretorio.
+Se non ci sono riassunti specifici (solo "—"), descrivi che l'attività è stata pubblicata senza ulteriore dettaglio.
+
+Ecco i dati: {dati_atti}
+"""
+
+DIARIO_FILE = "diario_atti.txt"  # Nome file di default per il diario generato

@@ -9,6 +9,15 @@ from pathlib import Path
 
 from .config import COLONNE_TABELLA
 from .log import logger
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+import json
+import re
+from .config import (
+    COLONNE_TABELLA,
+    OLLAMA_URL, # Assicurati che sia qui o importata da config
+    PROMPT_DIARIO, # Qui definito sopra in config.py
+    USER_AGENT, # User agent per Playwright
+)
 
 
 CSS_TABELLA = """
@@ -114,3 +123,158 @@ def scrivi_tabella(atti: list[dict], percorso: str | Path) -> Path:
     percorso.write_text(pagina, encoding="utf-8")
     logger.debug(f"Tabella HTML scritta in {percorso}: {len(righe)} righe")
     return percorso
+
+def _pulisci_riga_atti(testo: str) -> dict | None:
+    """
+    Estrae i dati da una riga di tabella HTML locale.
+    Ritorna un dict o None se non ha contenuto.
+    Cerca <td> con testo che contiene 'Data atto' o il pattern della data, 
+    oppure usa gli indici (4a colonna = riassunto).
+    """
+    if not testo:
+        return None
+
+    # Selezioniamo le celle tramite regex semplice su innerText della riga o split su tab
+    # Usiamo Playwright per estrarre il contenuto pulito se possibile, ma per leggere HTML statico,
+    # useremo una logica di splitting basata sulle colonne note (Data, Titolo, Link, Riassunto).
+    
+    # Qui semplifichiamo: assumiamo che l'HTML abbia <tr> e dentro <td>.
+    righe = re.findall(r'<td[^>]*>(.*?)</td>', testo, flags=re.DOTALL | re.IGNORECASE)
+    
+    if len(righe) < 4:
+        # Se non ha almeno 4 colonne, saltiamo
+        return None
+
+    data_inizio_str = righe[0].strip().replace("--", "").split()[0] if righe[0] else ""
+    titolo = re.sub(r'<[^>]+>', '', righe[1]).strip()
+    link = righe[2].strip() # Spesso vuoto o link relativo/assoluto
+    riassunto = re.sub(r'<[^>]+>', '', righe[3]).strip()
+
+    return {
+        "data": data_inizio_str,
+        "titolo": titolo,
+        "link": link,
+        "riassunto": riassunto,
+    }
+
+def estrai_riassunti_dal_html(percorso_html: Path | str) -> list[dict]:
+    """Legge il file HTML e restituisce una lista di dict con i dati dei riassunti."""
+    with open(percorso_html, 'r', encoding='utf-8') as f:
+        html = f.read()
+
+    # Carica l'HTML localmente in un browser per renderizzare e leggere meglio (opzionale ma robusto)
+    # Oppure parse puro. Usiamo Playwright come nel resto del progetto.
+    
+    if not logger.handlers:
+        configura_logging()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(user_agent=USER_AGENT)
+        page = context.new_page()
+        
+        try:
+            page.set_content(html, wait_until="domcontentloaded")
+            
+            # Seleziona la tabella generata da scrivi_tabella (spesso ha class="contenitore" o simile)
+            # Cerchiamo il primo <tbody> con tr
+            rows = page.query_selector_all("body .contenitore table tbody tr")
+            
+            atti_estratti = []
+            for row in rows:
+                try:
+                    # Costruiamo un selectore per la riga e ne leggiamo le celle pulite
+                    testo_riga = row.inner_text() # include i tag? inner_text no, strip_tags sì? playwright.playwright.text_content
+                    # playwright.playwright.locator("td").all_inner_text() è meglio.
+                    
+                    # Usiamo il locatore per le celle td
+                    cells = row.query_selector_all("td")
+                    if len(cells) >= 4:
+                        # Estraiamo il testo pulito delle prime 4 colonne
+                        c1 = cells[0].text_content()
+                        c2 = cells[1].text_content()
+                        c3 = cells[2].text_content()
+                        c4 = cells[3].text_content()
+                        
+                        # Logica per identificare la data e il riassunto in base alla posizione o al contenuto
+                        # La tabella ha colonne: Data, Titolo, Link, Riassunto (dall'HTML generato)
+                        
+                        if "Data" in c1 or re.search(r"\d{2}-\d{2}-\d{4}", c1):
+                            atti_estratti.append({
+                                "data": c1.strip(),
+                                "titolo": c2.strip(),
+                                "link": c3,
+                                "riassunto": c4.strip()
+                            })
+                except Exception as e:
+                    # Se la riga è corrotta o non standardabile, saltala
+                    continue
+            
+            return atti_estratti
+            
+        finally:
+            browser.close()
+
+def genera_diario(percorso_html: Path | str, modello: str = "llama3.1:8b") -> Path | None:
+    """
+    Legge i riassunti dal file HTML (usando --output) e chiama Ollama per generare un diario.
+    Restituisce il percorso del file di diario salvato (diario_atti.txt).
+    """
+    import json
+    import urllib.request
+    
+    # Estrai dati
+    try:
+        liste_riassunti = estrai_riassunti_dal_html(percorso_html)
+    except Exception as e:
+        logger.error(f"Errore nell'analisi HTML per il diario: {e}")
+        return None
+
+    if not liste_riassunti:
+        logger.warning("Nessun atto trovato nell'HTML fornito.")
+        return None
+
+    # Costruisci il prompt da mandare a Ollama
+    # Prepara i dati in formato leggibile (JSON minified o testo pulito)
+    prompt = PROMPT_DIARIO.replace("{dati_atti}", json.dumps(liste_riassunti, indent=2))
+
+    logger.info(f"Invio richiesta a Ollama per il diario ({len(liste_riassunti)} eventi)...")
+    
+    payload = {
+        "model": modello,
+        "stream": False,
+        "options": {"num_ctx": 8192}, # Ridurre consumo se serve
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+    }
+    logger.debug(f"Payload inviato a Ollama: {json.dumps(payload, indent=2)}")
+
+    try:
+        richiesta = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        
+        with urllib.request.urlopen(richiesta, timeout=900) as risposta:
+            dati = json.loads(risposta.read().decode("utf-8"))
+            diario_testo = dati.get("message", {}).get("content", "").strip()
+            
+    except Exception as e:
+        logger.error(f"Errore nella chiamata a Ollama per il diario: {e}")
+        return None
+
+    # Salva il diario in un file dedicato o sovrascrive l'output?
+    # Meglio creare un nuovo file "diario_atti.txt" accanto al progetto
+    from .config import DIARIO_FILE
+    percorso_output = Path(DIARIO_FILE)
+    
+    try:
+        with open(percorso_output, 'w', encoding='utf-8') as f:
+            f.write(diario_testo)
+        logger.info(f"Diario salvato in {percorso_output}")
+        return percorso_output
+    except Exception as e:
+        logger.error(f"Errore nella scrittura del file diario: {e}")
+        return None
