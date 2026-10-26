@@ -20,7 +20,11 @@ from .debug import debug_modale
 from .log import configura_logging, logger
 from .mail import invia_report
 from .pipeline import stampa_link_pdf
-from .report import scrivi_tabella
+from .report import (
+    scrivi_tabella,
+    genera_diario
+)   
+
 
 
 def _bool(valore: str) -> bool:
@@ -180,12 +184,20 @@ def _crea_parser() -> argparse.ArgumentParser:
         + ", ".join(DESCRIZIONI_ESCLUSE),
     )
 
+    altre.add_argument(
+        "--diario", default=False,  
+        action="store_true",
+        help="genera un diario dei documenti già elaborati partendo dal file HTML (--output) senza fare scraping.",
+    )
+
+
     return parser
 
 
 def _leggi_argomenti(argv: list[str] | None = None) -> argparse.Namespace:
     parser = _crea_parser()
     args = parser.parse_args(argv)
+    logger.debug(f"Argomenti CLI: {vars(args)}")
     if not args.debug:
         if args.riassumi and not args.scarica:
             parser.error("--riassumi true richiede --scarica true")
@@ -210,31 +222,47 @@ def main(argv: list[str] | None = None) -> None:
         su_file=args.log in ("file", "entrambi"),
     )
     logger.debug(f"Argomenti: {vars(args)}")
+   #if args.crea_diario and args.max_atti is not None: # Controllo di coerenza se si vuole usare max_atti in modo diverso? 
+   #     pass  # O meglio, --cria_diario disabilita scraping.
 
-    if args.debug:
-        debug_modale()
-        return
+    # Gestione logica flusso
+    if args.diario:
+        if not Path(args.output).exists():
+            logger.error("Opzione --diario: il file --output non esiste.")
+            return
 
-    atti = stampa_link_pdf(
-        headless=args.headless,
-        scarica=args.scarica,
-        cartella=args.cartella,
-        dal=args.dal,
-        al=args.al,
-        campo=args.campo,
-        riassumi=args.riassumi,
-        modello=args.modello,
-        ollama_url=args.ollama_url,
-        ocr=args.ocr,
-        ocr_lingua=args.ocr_lingua,
-        stato_file=args.stato or None,
-        ignora_stato=args.ignora_stato,
-        max_atti=args.max_atti,
-        max_pagine=args.max_pagine,
-        escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
-    )
+        logger.info(f"Generazione diario da {args.output}...")
+        # Richiama la funzione di generazione (da report.py o pipeline)
+        try:
+            percorso = genera_diario(Path(args.output), modello=args.modello)
+            logger.info(f"Diario salvato in {percorso}")
+        except Exception as e:
+            logger.error(f"Errore nella generazione del diario: {e}", exc_info=True)
+    else:
+        if args.debug:
+            debug_modale()
+            return
 
-    percorso = scrivi_tabella(atti, args.output)
-    logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
-    if args.invia_mail:
-        invia_report(Path(percorso))
+        atti = stampa_link_pdf(
+            headless=args.headless,
+            scarica=args.scarica,
+            cartella=args.cartella,
+            dal=args.dal,
+            al=args.al,
+            campo=args.campo,
+            riassumi=args.riassumi,
+            modello=args.modello,
+            ollama_url=args.ollama_url,
+            ocr=args.ocr,
+            ocr_lingua=args.ocr_lingua,
+            stato_file=args.stato or None,
+            ignora_stato=args.ignora_stato,
+            max_atti=args.max_atti,
+            max_pagine=args.max_pagine,
+            escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
+        )
+
+        percorso = scrivi_tabella(atti, args.output)
+        logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
+        if args.invia_mail:
+            invia_report(Path(percorso))
