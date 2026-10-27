@@ -7,9 +7,10 @@ from datetime import datetime
 from html import escape as esc_html
 from pathlib import Path
 
-from .config import COLONNE_TABELLA
-from .log import logger
+from .config import (COLONNE_TABELLA,CSS_DIARIO)
+from .log import (logger,configura_logging)
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+import urllib.request
 import json
 import re
 from .config import (
@@ -17,6 +18,7 @@ from .config import (
     OLLAMA_URL, # Assicurati che sia qui o importata da config
     PROMPT_DIARIO, # Qui definito sopra in config.py
     USER_AGENT, # User agent per Playwright
+    MODELLO_LOCALE, # Modello LLM locale
 )
 
 
@@ -277,4 +279,231 @@ def genera_diario(percorso_html: Path | str, modello: str = "llama3.1:8b") -> Pa
         return percorso_output
     except Exception as e:
         logger.error(f"Errore nella scrittura del file diario: {e}")
+        return None
+
+def _leggi_riassunti_dal_html(percorso_html: Path | str) -> list[dict]:
+    if not percorso_html:
+        return []
+
+    try:
+        with open(percorso_html, 'r', encoding='utf-8') as f:
+            html = f.read()
+        
+        if not logger.handlers:
+            configura_logging()
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(user_agent=USER_AGENT)
+            page = context.new_page()
+            
+            try:
+                page.set_content(html, wait_until="domcontentloaded")
+                # Troviamo tutte le righe della tabella
+                rows = page.query_selector_all("body .contenitore table tbody tr")
+                
+                atti_estratti = []
+                for row in rows:
+                    try:
+                        cells = row.query_selector_all("td")
+                        if len(cells) >= 4:
+                            c1 = cells[0].text_content() # Data
+                            c2 = cells[1].text_content() # Titolo
+                            c3_elem = cells[2] # Cellula link
+                            c4 = cells[3].text_content() # Riassunto
+                            
+                            # Estraiamo l'URL vero dall'elemento <a>
+                            link_url = ""
+                            anchor = c3_elem.query_selector("a")
+                            if anchor:
+                                link_url = anchor.get_attribute("href")
+                            
+                            if c1 and re.search(r'\d{2}-\d{2}-\d{4}', c1):
+                                atti_estratti.append({
+                                    "data": c1,
+                                    "titolo": c2,
+                                    "link": link_url,
+                                    "riassunto": c4,
+                                })
+                    except Exception:
+                        continue
+                
+                return atti_estratti
+            finally:
+                browser.close()
+    except Exception as e:
+        logger.error(f"Errore nella lettura HTML per diario: {e}")
+        return []
+
+def format_markdown_to_html(text: str) -> str:
+    """Converte i simboli Markdown comuni in tag HTML semplici."""
+    # Grassetto
+    text = text.replace("**", "**") # tieni per ora
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    # Elenchi (molto semplici)
+    if "-" in text:
+        lines = text.split('\n')
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith('- '):
+                new_lines.append(f"<li>{line[2:].strip()}</li>")
+            else:
+                new_lines.append(line)
+        text = '\n'.join(new_lines)
+    return text
+
+def crea_diario_html(percorso: Path | str, modello: str = MODELLO_LOCALE) -> Path | None:
+    import re
+    import json
+    import urllib.request
+    from pathlib import Path
+    from .config import OLLAMA_URL, PROMPT_DIARIO, DIARIO_FILE
+    from .log import logger
+    from .config import USER_AGENT
+
+    sinistra_svg = "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7f/Sinistra_Italiana.svg/250px-Sinistra_Italiana.svg.png" #"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23d71920' width='100' height='100'/><text x='50' y='60' font-family='Arial' font-size='14' fill='white' text-anchor='middle'>SI</text></svg>"
+    avs_svg = "https://verdisinistra.it/wp-content/uploads/2022/07/Alleanza-Verdi-Sinistra-10cm-copia@2x.png"# "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23d71920' width='100' height='100'/><text x='50' y='60' font-family='Arial' font-size='14' fill='white' text-anchor='middle'>AVS</text></svg>"
+        
+    if not percorso:
+        raise ValueError("Serve un percorso HTML valido per la generazione del diario.")
+        
+    if not Path(percorso).exists():
+        logger.error(f"File HTML non trovato: {percorso}")
+        return None
+
+    # Estrai dati
+    liste_riassunti = _leggi_riassunti_dal_html(percorso)
+    
+    if not liste_riassunti:
+        logger.warning("Nessun atto trovato nell'HTML fornito.")
+        return None
+
+    # Prompt LLM per il diario (Aggiornato per evitare Markdown pesante)
+    prompt_texto = PROMPT_DIARIO.replace("{dati_atti}", json.dumps(liste_riassunti, indent=2))
+    
+    try:
+        payload = {
+            "model": modello,
+            "stream": False,
+            "options": {"num_ctx": 8192}, 
+            "messages": [
+                {"role": "user", "content": f"{prompt_texto}\n\nInstruzioni extra: Non usare formattazioni Markdown complesse. Usa paragrafi semplici e elenchi puntati se necessario."}
+            ],
+        }
+        
+        richiesta = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        
+        with urllib.request.urlopen(richiesta, timeout=900) as risposta:
+            dati = json.loads(risposta.read().decode("utf-8"))
+            diario_testo = dati.get("message", {}).get("content", "").strip()
+            
+    except Exception as e:
+        logger.error(f"Errore nella chiamata a Ollama: {e}")
+        return None
+
+    # Salvataggio file HTML customizzato con header partiti politici
+    percorso_output = Path(percorso).with_name("diario_atti.html")
+    
+    # Trasformiamo il testo del diario in HTML semplice (pulizia Markdown)
+    html_corpo_diario = format_markdown_to_html(diario_testo).replace("\n", "<br>")
+    
+    html_tabella_completa = ""
+    for r in liste_riassunti:
+        d = r.get("data", "")
+        t = r.get("titolo", "").replace("<", "&lt;").replace(">", "&gt;")
+        l = r.get("link", "")
+        ri = r.get("riassunto", "") or "—"
+        
+        # Verifichiamo se il link esiste e se è valido
+        if l and l.startswith(("http://","https://")):
+            link_html = f'<a href="{l}" target="_blank">Apri PDF</a>'
+        else:
+            link_html = "—"
+        
+        html_tabella_completa += f'<tr>\n'
+        html_tabella_completa += f'  <td class="data">{esc_html(d)}</td>\n'
+        html_tabella_completa += f'  <td class="titolo">{t}</td>\n'
+        html_tabella_completa += f'  <td class="link">{link_html}</td>\n'
+        html_tabella_completa += f'  <td class="riassunto">{esc_html(ri)}</td>\n'
+        html_tabella_completa += f'</tr>\n'
+
+    html_tabella_header = """
+<div class='dettaglio'><h2>Dettaglio degli atti</h2></div>
+<table border='1'>
+<thead>
+<tr>
+<th>Data</th>
+<th>Titolo atto</th>
+<th>Link remoto al PDF</th>
+<th>Riassunto</th>
+</tr>
+</thead>
+<tbody>"""
+    
+    html_tabella_footer = """</tbody></table>"""
+    
+    # CSS
+    css_diario = """
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #6b7280; --bordo: #d8dee4;
+  --testata: #f3f4f6; --hover: #f8fafc; --link: #0b5cad;
+}
+body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 2rem; line-height: 1.5; }
+h1 { font-size: 2.5rem; text-align: center; margin-bottom: 0.5rem; }
+.subtitle { text-align: center; color: var(--muted); font-size: 1.2rem; margin-top: -0.5rem; }
+.header-container { text-align: center; margin-bottom: 2rem; }
+.logo { display:inline-block; margin: 0 0.5rem; vertical-align: middle; width: 48px; height: auto; }
+.logos { display:flex; justify-content:center; align-items:center; gap:0.5rem; }
+.diario { white-space: pre-line; border-left: 2px solid var(--bordo); padding-left:1rem; font-style:italic; margin-bottom:2rem; background: #f9fafb; padding:1rem; border-radius:8px; }
+.dettaglio { text-align:center; margin-top:2rem; }
+table { border-collapse: collapse; width: 100%; max-width: 1000px; margin: 0 auto; border: 1px solid var(--bordo); border-radius:8px; overflow:hidden; }
+th, td { padding: .6rem .8rem; text-align: left; vertical-align: top; border-bottom: 1px ==d; }
+thead th { background: var(--testata); font-size: .9rem; }
+td.data { white-space: nowrap; min-width:80px; }
+td.link { white-space: nowrap; }
+</style>"""
+
+    html_finale = f"""
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Diario - Sinistra Italia e AVS</title>
+    <style>{css_diario}</style>
+</head>
+<body>
+    <div class='header-container'>
+        <div class='logos'>
+            <img src='{sinistra_svg}' alt='Sinistra Italiana' class='logo'>
+            <img src='{avs_svg}' alt='AVS' class='logo'>
+        </div>
+    </div>
+    <h1>Sinistra Italia e AVS informano</h1>
+    <p class='subtitle'>Cosa è successo questa settimana nel Comune di Anguillara Sabazia</p>
+    <div class='diario'>{html_corpo_diario}</div>
+    <div class='dettaglio'><h2>Dettaglio degli atti</h2></div>
+    {html_tabella_header}
+    {html_tabella_completa}
+    {html_tabella_footer}
+</body>
+</html>
+"""
+    # Sostituzioni SVG
+    
+    html_finale = html_finale.replace("{sinistra_svg}", sinistra_svg).replace("{avs_svg}", avs_svg)
+
+    try:
+        percorso_output.parent.mkdir(parents=True, exist_ok=True)
+        percorso_output.write_text(html_finale, encoding="utf-8")
+        logger.info(f"Diario salvato in {percorso_output}")
+        return percorso_output
+    except Exception as e:
+        logger.error(f"Errore scrittura file diario: {e}")
         return None
