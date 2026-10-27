@@ -105,3 +105,23 @@ Ecco i dati: {dati_atti}
 """
 
 DIARIO_FILE = "diario_atti.txt"  # Nome file di default per il diario generato
+
+CSS_DIARIO = f"""
+:root {{
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1f2328; --muted: #6b7280; --bordo: #d8dee4;
+  --testata: #f3f4f6; --hover: #f8fafc; --link: #0b5cad;
+}}
+body {{ font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 2rem; line-height: 1.5; }}
+h1 {{ font-size: 2.5rem; text-align: center; margin-bottom: 0.5rem; }}
+.subtitle {{ text-align: center; color: var(--muted); font-size: 1.2rem; margin-top: -0.5rem; }}
+.header-container {{ text-align: center; margin-bottom: 2rem; }}
+.logo {{" display:inline-block; margin: 0 0.5rem; vertical-align: middle; width: 48px; height: auto; }}
+.logos {{" display:flex; justify-content:center; align-items:center; gap:0.5rem;}}
+.diario {{ white-space: pre-line; border-left: 2px solid var(--bordo); padding-left:1rem; font-style:italic; margin-bottom:2rem; background: #f9fafb; padding:1rem; border-radius:8px; }}
+.dettaglio {{ text-align:center; margin-top:2rem; }}
+table {{ border-collapse: collapse; width: 100%; max-width: 1000px; margin: 0 auto; border: 1px solid var(--bordo); border-radius:8px; overflow:hidden; }}
+th, td {{ padding: .6rem .8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--bordo); }}
+thead th {{ background: var(--testata); font-size: .9rem; }}
+td.data {{ white-space: nowrap; min-width:80px; }}
+td.link {{ white-space: nowrap; }}"""

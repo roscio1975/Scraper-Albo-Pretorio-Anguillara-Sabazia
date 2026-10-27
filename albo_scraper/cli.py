@@ -185,9 +185,11 @@ def _crea_parser() -> argparse.ArgumentParser:
     )
 
     altre.add_argument(
-        "--diario", default=False,  
+        "--diario", 
         action="store_true",
-        help="genera un diario dei documenti già elaborati partendo dal file HTML (--output) senza fare scraping.",
+        default=False,
+        help="genera un diario HTML riassuntivo partendo dal file --output senza fare scraping. "
+              "Crea una pagina formattata con logo e tabella finale.",
     )
 
 
@@ -227,17 +229,18 @@ def main(argv: list[str] | None = None) -> None:
 
     # Gestione logica flusso
     if args.diario:
-        if not Path(args.output).exists():
-            logger.error("Opzione --diario: il file --output non esiste.")
-            return
-
-        logger.info(f"Generazione diario da {args.output}...")
-        # Richiama la funzione di generazione (da report.py o pipeline)
+        logger.info(f"Generazione diario HTML in corso... (Input: {args.output})")
+        
         try:
-            percorso = genera_diario(Path(args.output), modello=args.modello)
-            logger.info(f"Diario salvato in {percorso}")
+            from .report import crea_diario_html  # Funzione che chiameremo dopo
+            percorso = crea_diario_html(percorso=Path(args.output), modello=args.modello)
+            logger.info(f"Diario HTML salvato in: {percorso}")
+            if args.invia_mail:  # Opzionale: invia la mail con il diario o no? 
+                 pass  # Al momento salto l'invio email per non complicare, o lo disabilito implicitamente.
         except Exception as e:
-            logger.error(f"Errore nella generazione del diario: {e}", exc_info=True)
+            logger.error(f"Errore nella generazione del diario HTML: {e}", exc_info=True)
+        return  # Esce qui se si vuole solo il diario (non serve stamp_link_pdf)
+
     else:
         if args.debug:
             debug_modale()
