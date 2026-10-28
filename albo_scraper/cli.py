@@ -17,14 +17,11 @@ from .config import (
     STATO_FILE,
 )
 from .debug import debug_modale
+from .diario import crea_diario_html
 from .log import configura_logging, logger
 from .mail import invia_report
 from .pipeline import stampa_link_pdf
-from .report import (
-    scrivi_tabella,
-    genera_diario
-)   
-
+from .report import scrivi_tabella
 
 
 def _bool(valore: str) -> bool:
@@ -68,18 +65,21 @@ class _HelpFormatter(
 
 EPILOGO_HELP = """\
 esempi:
-  python scraper_albo.py                                  link + download dei PDF
+  python scraper_albo.py                                  link + download dei PDF (prima pagina)
   python scraper_albo.py --scarica false                  solo link, niente download
-  python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
-  python scraper_albo.py --debug true                     salva HTML/screenshot della modale
-  python scraper_albo.py --output risultati.html         nome del file HTML con la tabella finale
-  python scraper_albo.py --dal 01-10-2026 --al oggi       solo gli atti in quell'intervallo
   python scraper_albo.py --max-atti 25                    i 25 atti più recenti (scorre le pagine)
   python scraper_albo.py --max-pagine 3                   solo le prime 3 pagine della tabella
+  python scraper_albo.py --dal 01-10-2026 --al oggi       solo gli atti in quell'intervallo
   python scraper_albo.py --riassumi true --modello gemma3:12b
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
+  python scraper_albo.py --invia-mail false               non invia la tabella per mail
+  python scraper_albo.py --output risultati.html          nome del file HTML con la tabella finale
+  python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto
+  python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
+  python scraper_albo.py --debug true                     salva HTML/screenshot di tabella e modale
+  python scraper_albo.py --url https://cloud.urbi.it/...  albo di un altro ente
 """
 
 
@@ -91,10 +91,12 @@ def _crea_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=_HelpFormatter,
         epilog=EPILOGO_HELP,
+        add_help=False,  # -h/--help è definito sotto, in italiano
     )
     bool_kw = dict(type=_bool, nargs="?", const=True, metavar="true|false")
 
     princ = parser.add_argument_group("opzioni principali")
+    princ.add_argument("-h", "--help", action="help", help="mostra questo messaggio ed esce")
     princ.add_argument(
         "--livello-log", type=str.lower, choices=["debug", "info", "error"],
         default="info", help="livello minimo dei messaggi registrati",
@@ -122,6 +124,11 @@ def _crea_parser() -> argparse.ArgumentParser:
     )
     altre.add_argument("--cartella", default="download_atti", help="cartella dei PDF scaricati")
     altre.add_argument("--headless", default=True, help="browser senza finestra", **bool_kw)
+    altre.add_argument(
+        "--url", metavar="URL",
+        help="indirizzo della pagina dell'albo (default: quello di Anguillara Sabazia, "
+        "impostato in config.py)",
+    )
     altre.add_argument("--dal", type=_data_cli, help="filtro data: da (GG-MM-AAAA o 'oggi')")
     altre.add_argument("--al", type=_data_cli, help="filtro data: a (GG-MM-AAAA o 'oggi')")
     altre.add_argument(
@@ -185,13 +192,11 @@ def _crea_parser() -> argparse.ArgumentParser:
     )
 
     altre.add_argument(
-        "--diario", 
-        action="store_true",
-        default=False,
-        help="genera un diario HTML riassuntivo partendo dal file --output senza fare scraping. "
-              "Crea una pagina formattata con logo e tabella finale.",
+        "--diario", default=False,
+        help="non fa scraping: crea un diario in linguaggio semplice (testo di Ollama + tabella) "
+        "a partire dal file --output già prodotto e lo salva come diario_atti.html nella "
+        "stessa cartella. Usa --modello e --ollama-url; non invia la mail", **bool_kw,
     )
-
 
     return parser
 
@@ -199,13 +204,26 @@ def _crea_parser() -> argparse.ArgumentParser:
 def _leggi_argomenti(argv: list[str] | None = None) -> argparse.Namespace:
     parser = _crea_parser()
     args = parser.parse_args(argv)
-    logger.debug(f"Argomenti CLI: {vars(args)}")
-    if not args.debug:
+    if not (args.debug or args.diario):
         if args.riassumi and not args.scarica:
             parser.error("--riassumi true richiede --scarica true")
         if args.dal and args.al and args.dal > args.al:
             parser.error("--dal deve essere precedente o uguale a --al")
     return args
+
+
+def _modalita_diario(args: argparse.Namespace) -> None:
+    """--diario: crea il diario HTML dal file --output, senza fare scraping."""
+    logger.info(f"Generazione del diario HTML (input: {args.output})")
+    try:
+        percorso = crea_diario_html(
+            Path(args.output), modello=args.modello, ollama_url=args.ollama_url
+        )
+    except Exception:
+        logger.error("Errore nella generazione del diario HTML", exc_info=True)
+        percorso = None
+    if percorso is None:
+        raise SystemExit(1)  # il motivo è nel log; il codice di uscita serve a script e cron
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -224,48 +242,35 @@ def main(argv: list[str] | None = None) -> None:
         su_file=args.log in ("file", "entrambi"),
     )
     logger.debug(f"Argomenti: {vars(args)}")
-   #if args.crea_diario and args.max_atti is not None: # Controllo di coerenza se si vuole usare max_atti in modo diverso? 
-   #     pass  # O meglio, --cria_diario disabilita scraping.
 
-    # Gestione logica flusso
     if args.diario:
-        logger.info(f"Generazione diario HTML in corso... (Input: {args.output})")
-        
-        try:
-            from .report import crea_diario_html  # Funzione che chiameremo dopo
-            percorso = crea_diario_html(percorso=Path(args.output), modello=args.modello)
-            logger.info(f"Diario HTML salvato in: {percorso}")
-            if args.invia_mail:  # Opzionale: invia la mail con il diario o no? 
-                 pass  # Al momento salto l'invio email per non complicare, o lo disabilito implicitamente.
-        except Exception as e:
-            logger.error(f"Errore nella generazione del diario HTML: {e}", exc_info=True)
-        return  # Esce qui se si vuole solo il diario (non serve stamp_link_pdf)
+        _modalita_diario(args)
+        return
+    if args.debug:
+        debug_modale(url=args.url)
+        return
 
-    else:
-        if args.debug:
-            debug_modale()
-            return
+    atti = stampa_link_pdf(
+        headless=args.headless,
+        scarica=args.scarica,
+        cartella=args.cartella,
+        dal=args.dal,
+        al=args.al,
+        campo=args.campo,
+        riassumi=args.riassumi,
+        modello=args.modello,
+        ollama_url=args.ollama_url,
+        ocr=args.ocr,
+        ocr_lingua=args.ocr_lingua,
+        stato_file=args.stato or None,
+        ignora_stato=args.ignora_stato,
+        max_atti=args.max_atti,
+        max_pagine=args.max_pagine,
+        escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
+        url=args.url,
+    )
 
-        atti = stampa_link_pdf(
-            headless=args.headless,
-            scarica=args.scarica,
-            cartella=args.cartella,
-            dal=args.dal,
-            al=args.al,
-            campo=args.campo,
-            riassumi=args.riassumi,
-            modello=args.modello,
-            ollama_url=args.ollama_url,
-            ocr=args.ocr,
-            ocr_lingua=args.ocr_lingua,
-            stato_file=args.stato or None,
-            ignora_stato=args.ignora_stato,
-            max_atti=args.max_atti,
-            max_pagine=args.max_pagine,
-            escludi=DESCRIZIONI_ESCLUSE + tuple(args.escludi or ()),
-        )
-
-        percorso = scrivi_tabella(atti, args.output)
-        logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
-        if args.invia_mail:
-            invia_report(Path(percorso))
+    percorso = scrivi_tabella(atti, args.output)
+    logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
+    if args.invia_mail:
+        invia_report(Path(percorso))

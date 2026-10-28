@@ -8,7 +8,6 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from .config import MODALE
 from .log import logger
 from .sito import (
     apri_modale,
@@ -33,6 +32,7 @@ def debug_modale(
     file_png: str = "debug_modale.png",
     file_tabella: str = "debug_tabella.html",
     file_png_tabella: str = "debug_tabella.png",
+    url: str | None = None,
 ) -> None:
     """
     Salva HTML e screenshot della tabella degli atti (compresa la paginazione) e della
@@ -46,17 +46,17 @@ def debug_modale(
         browser, context = crea_contesto(p, headless)
         page = context.new_page()
         try:
-            apri_tabella(page)
+            apri_tabella(page, url)
 
             # Tabella e paginazione (senza script, stili e icone per tenere il file leggibile)
             salva_istantanea(page, file_tabella, file_png_tabella)
             logger.info(f"Salvati {file_tabella} e {file_png_tabella}")
             logger.info(f"Paginazione: {descrivi_paginazione(page)}")
 
-            apri_modale(page, indice_riga)
+            modale = apri_modale(page, indice_riga)
             page.wait_for_timeout(3_000)
             page.screenshot(path=file_png)
-            html = page.locator(MODALE).evaluate("el => el.outerHTML")
+            html = modale.evaluate("el => el.outerHTML")
             Path(file_html).write_text(html, encoding="utf-8")
             logger.info(f"Salvati {file_html} e {file_png}")
         finally:

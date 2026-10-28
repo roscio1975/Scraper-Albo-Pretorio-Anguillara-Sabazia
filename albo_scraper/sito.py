@@ -14,6 +14,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from . import config
 from .config import (
     ATTESA_CAMBIO_PAGINA_MS,
+    ATTESA_MODALE_MS,
     DESCRIZIONI_ESCLUSE,
     MODALE,
     RE_DATE,
@@ -36,10 +37,11 @@ def crea_contesto(playwright: Playwright, headless: bool) -> tuple[Browser, Brow
     return browser, context
 
 
-def apri_tabella(page: Page) -> None:
-    """Apre il sito, clicca 'Avanti' e attende il caricamento della tabella."""
-    logger.info(f"Apertura del sito: {config.URL}")
-    page.goto(config.URL, wait_until="domcontentloaded")
+def apri_tabella(page: Page, url: str | None = None) -> None:
+    """Apre il sito (`url`, di default quello in config.py), clicca 'Avanti' e attende la tabella."""
+    url = url or config.URL
+    logger.info(f"Apertura del sito: {url}")
+    page.goto(url, wait_until="domcontentloaded")
 
     avanti = page.get_by_role("button", name="Avanti")
     if avanti.count() == 0:
@@ -89,46 +91,84 @@ def parse_tabella(page: Page) -> list[dict]:
     return risultati
 
 
+# Modale aperta: selettore generico, usato se il pulsante non dichiara quale modale apre
+SELETTORE_MODALE_GENERICO = (
+    f"{MODALE}, .modal.show, .modal.in, div.modal:visible, [role='dialog']:visible"
+)
+
+
+def _selettore_modale_dichiarato(pulsante: Locator) -> str | None:
+    """
+    Selettore della modale che il pulsante dichiara di aprire, o None. Sul sito Urbi lo indica
+    data-w3cbt-button-modale-id (e può cambiare da una pagina all'altra); si riconoscono anche
+    gli attributi di Bootstrap (data-bs-target, data-target) e un href del tipo "#id".
+    """
+    modale_id = pulsante.get_attribute("data-w3cbt-button-modale-id")
+    if modale_id:
+        return f"[id='{modale_id}']"
+    target = pulsante.get_attribute("data-bs-target") or pulsante.get_attribute("data-target")
+    if target:
+        return target
+    href = pulsante.get_attribute("href") or ""
+    return href if href.startswith("#") else None
+
+
+def _diagnostica_modale(
+    page: Page, indice_riga: int, dichiarato: str | None, pulsante: Locator
+) -> None:
+    """Modale non comparsa: registra cosa si vede e salva HTML e screenshot della pagina."""
+    try:
+        modali = page.evaluate(
+            """() => [...document.querySelectorAll('.modal, [role=dialog]')].map(e => ({
+                id: e.id, classi: e.className, stile: e.getAttribute('style'),
+                visibile: !!(e.offsetWidth || e.offsetHeight)}))"""
+        )
+        dettaglio = (
+            f"modale dichiarata dal pulsante: {dichiarato!r}; modali presenti nella pagina: "
+            f"{modali}; schede aperte={len(page.context.pages)}"
+        )
+    except PlaywrightError as e:
+        dettaglio = f"diagnostica non riuscita ({e})"
+
+    file_html = f"debug_modale_riga{indice_riga}.html"
+    file_png = f"debug_modale_riga{indice_riga}.png"
+    try:
+        salva_istantanea(page, file_html, file_png)
+        salvati = f"Salvati {file_html} e {file_png}."
+    except PlaywrightError as e:
+        salvati = f"Salvataggio della diagnostica non riuscito ({e})."
+    logger.error(f"La modale non è comparsa (riga {indice_riga}). {dettaglio}. {salvati}")
+
+
 def apri_modale(page: Page, indice_riga: int) -> Locator:
-    """Apri la modale 'Pubblicazione' della riga."""
+    """
+    Clicca 'Pubblicazione' nella riga indicata e restituisce la modale aperta: quella
+    dichiarata dal pulsante se è visibile, altrimenti la modale visibile nella pagina.
+    Se non compare nessuna modale registra una diagnostica e solleva il timeout.
+    """
     riga = page.locator(f"{TABELLA_ATTI} tbody tr").nth(indice_riga)
     pulsante = riga.get_by_role("button", name="Pubblicazione")
-    target = pulsante.get_attribute("data-bs-target") or pulsante.get_attribute(
-        "data-target"
-    )
-
-    if not target:
-        href = pulsante.get_attribute("href") or ""
-        target = href if href.startswith("#") else None
+    dichiarato = _selettore_modale_dichiarato(pulsante)
 
     logger.debug(
-        f"Apertura della modale 'Pubblicazione' (riga {indice_riga}, target={target!r})"
+        f"Apertura della modale 'Pubblicazione' (riga {indice_riga}, dichiarata={dichiarato!r})"
     )
     pulsante.click()
 
-    if target:
-        modale = page.locator(target)
-        try:
-            modale.wait_for(state="visible", timeout=5_000)
-            return modale
-        except PlaywrightTimeout:
-            logger.debug(f"Target {target!r} non visibile; cerco la modale attiva")
+    # Una sola attesa: va bene la modale dichiarata o una qualsiasi modale aperta
+    candidati = SELETTORE_MODALE_GENERICO
+    if dichiarato:
+        candidati = f"{dichiarato}, {candidati}"
+    try:
+        page.locator(candidati).first.wait_for(state="visible", timeout=ATTESA_MODALE_MS)
+    except PlaywrightTimeout:
+        _diagnostica_modale(page, indice_riga, dichiarato, pulsante)
+        raise
 
-    # Fallback per modali con ID variabile o senza target dichiarato sul pulsante.
-    for selettore in (".modal.show", ".modal.in", "div.modal:visible", "[role='dialog']:visible"):
-        candidate = page.locator(selettore)
-        try:
-            candidate.first.wait_for(state="visible", timeout=3_000)
-            for i in range(candidate.count()):
-                if candidate.nth(i).is_visible():
-                    return candidate.nth(i)
-        except PlaywrightTimeout:
-            continue
-
-    # Ultimo fallback per siti con markup non Bootstrap.
-    modale = page.locator(MODALE)
-    modale.wait_for(state="visible", timeout=5_000)
-    return modale
+    if dichiarato and page.locator(dichiarato).first.is_visible():
+        return page.locator(dichiarato)
+    logger.debug("Uso la modale aperta nella pagina (diversa da quella dichiarata dal pulsante)")
+    return page.locator(SELETTORE_MODALE_GENERICO).first
 
 
 def chiudi_modale(page: Page, modale: Locator) -> None:
@@ -269,7 +309,7 @@ def _diagnostica_cambio_pagina(page: Page, prima: str, pagina_corrente: int) -> 
 def _non_cliccabile(elemento: Locator) -> bool:
     """True per gli elementi disabilitati o che non fanno parte della paginazione."""
     return elemento.evaluate(
-        """e => !!e.closest("table, #idModale1, .disabled, [disabled], [aria-disabled='true']")"""
+        """e => !!e.closest("table, .modal, .disabled, [disabled], [aria-disabled='true']")"""
     )
 
 

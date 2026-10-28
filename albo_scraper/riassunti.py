@@ -9,13 +9,13 @@ from .config import (
     MAX_CARATTERI,
     MIN_CARATTERI_PAGINA,
     MODELLO_LOCALE,
-    NUM_CTX,
     OCR_LINGUA,
     OLLAMA_URL,
     PROMPT_RIASSUNTO,
 )
 from .log import logger
 from .ocr import LettoreOcr
+from .ollama import chiedi_a_ollama
 
 
 def estrai_testo_pdf(
@@ -68,9 +68,6 @@ def riassumi_pdf_locale(
     Il testo viene estratto con pypdf (e con l'OCR per le pagine scansionate, se `ocr`)
     e inviato al modello: nessun dato esce dal PC.
     """
-    import json
-    import urllib.request
-
     testo = estrai_testo_pdf(percorso, ocr=ocr, lingua_ocr=lingua_ocr)
     if not testo:
         raise RuntimeError(
@@ -85,20 +82,5 @@ def riassumi_pdf_locale(
     testo = testo[:MAX_CARATTERI]
 
     istruzioni = PROMPT_RIASSUNTO.format(max_righe=max_righe)
-    payload = {
-        "model": modello,
-        "stream": False,
-        "options": {"num_ctx": NUM_CTX, "temperature": 0.2},
-        "messages": [
-            {"role": "user", "content": f"{istruzioni}\n\nTESTO DELL'ATTO:\n{testo}"}
-        ],
-    }
-    logger.debug(f"PAYLOAD:  {payload}")
-    richiesta = urllib.request.Request(
-        f"{url}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(richiesta, timeout=900) as risposta:
-        dati = json.load(risposta)
-    return dati["message"]["content"].strip()
+    prompt = f"{istruzioni}\n\nTESTO DELL'ATTO:\n{testo}"
+    return chiedi_a_ollama(prompt, modello, url, temperatura=0.2, timeout=300)

@@ -14,6 +14,8 @@ Flusso:
    I documenti già elaborati in precedenza (registrati nello stato) vengono saltati.
 6. scrive un file HTML con la tabella: data atto, titolo, link remoto al PDF, riassunto
 7. opzionalmente invia la tabella per mail (destinatari in receipts.txt)
+   Con --diario non si fa scraping: dalla tabella già prodotta si crea un diario in
+   linguaggio semplice (diario_atti.html).
 
 Moduli:
     config      costanti e impostazioni di default
@@ -21,10 +23,12 @@ Moduli:
     filtri      conversione e filtro delle date
     sito        interazione con il sito (tabella, paginazione, modale, link)
     pdf         download dei PDF e riuso dei file locali
-    riassunti   riassunti con Ollama
+    ollama      chiamate al server Ollama (usate da riassunti e diario)
+    riassunti   riassunti dei PDF con Ollama
     ocr         OCR (Tesseract) delle pagine scansionate dei PDF
     stato       memoria dei documenti già scaricati e riassunti (stato_atti.json)
     report      tabella HTML finale
+    diario      diario discorsivo degli atti (--diario), a partire dalla tabella HTML
     mail        invio della tabella finale per mail (SMTP)
     pipeline    flusso principale (stampa_link_pdf)
     debug       modalità debug (HTML/screenshot di tabella, paginazione e modale)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 import smtplib
-import mimetypes
 from email.message import EmailMessage
 from pathlib import Path
 from .config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, RECEIPTS_FILE
@@ -16,7 +15,7 @@ def invia_report(file_percorso: Path) -> None:
 
     # 1. Leggi i destinatari
     try:
-        with open(RECEIPTS_FILE, "r") as f:
+        with open(RECEIPTS_FILE, "r", encoding="utf-8") as f:
             destinatari = [line.strip() for line in f if line.strip() and "@" in line]
     except FileNotFoundError:
         logger.error(f"File {RECEIPTS_FILE} non trovato.")
@@ -31,7 +30,7 @@ def invia_report(file_percorso: Path) -> None:
     msg["Subject"] = "Ultimi atti sull’albo Pretorio"
     msg["From"] = EMAIL_FROM
     msg["To"] = ", ".join(destinatari)
-    msg.set_content(f"Ciao a tutti,\n\nIn allegato la tabella aggiornata degli atti pubblicati sull'albo pretorio.\n\nHast Siempre!.")
+    msg.set_content("Ciao a tutti,\n\nIn allegato la tabella aggiornata degli atti pubblicati sull'albo pretorio.\n\nHast Siempre!.")
 
     # 3. Aggiungi l'allegato
     with open(file_percorso, "rb") as f:

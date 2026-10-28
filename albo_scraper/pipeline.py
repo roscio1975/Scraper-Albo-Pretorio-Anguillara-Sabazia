@@ -8,9 +8,11 @@ from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
+from playwright.sync_api import Error as PlaywrightError
 
 from .config import (
     DESCRIZIONI_ESCLUSE,
+    MAX_ERRORI_CONSECUTIVI,
     MAX_PAGINE_SICUREZZA,
     MODELLO_LOCALE,
     OCR_LINGUA,
@@ -145,9 +147,27 @@ def _scarica_documenti(context: BrowserContext, atto: dict, imp: Impostazioni) -
             _riassumi_documento(atto, doc, percorso, id_doc, imp)
 
 
-def _elabora_atto(page: Page, context: BrowserContext, atto: dict, imp: Impostazioni) -> None:
-    """Ricava i link dell'atto (modale 'Pubblicazione') e, se richiesto, scarica e riassume."""
-    atto["link_pdf"] = ottieni_link_pdf_atto(page, atto["indice_riga"], imp.escludi)
+def _elabora_atto(
+    page: Page, context: BrowserContext, atto: dict, imp: Impostazioni
+) -> bool:
+    """
+    Ricava i link dell'atto (modale 'Pubblicazione') e, se richiesto, scarica e riassume.
+    Se l'atto non si riesce a elaborare (es. la modale non si apre) registra l'errore e
+    restituisce False, senza interrompere gli altri atti.
+    """
+    try:
+        atto["link_pdf"] = ottieni_link_pdf_atto(page, atto["indice_riga"], imp.escludi)
+    except PlaywrightError as e:
+        motivo = str(e).strip().splitlines()[0]
+        logger.error(f"Atto non elaborato ({atto['testo_atto'][:80]}): {motivo}", exc_info=True)
+        atto["link_pdf"] = []
+        atto["errore"] = motivo
+        try:  # chiude un'eventuale modale rimasta a metà, per non intralciare l'atto successivo
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+        except PlaywrightError:
+            pass
+        return False
 
     logger.info(f"Atto: {atto['testo_atto'][:80]}")
     for doc in atto["link_pdf"]:
@@ -157,6 +177,7 @@ def _elabora_atto(page: Page, context: BrowserContext, atto: dict, imp: Impostaz
         _scarica_documenti(context, atto, imp)
     else:
         _riporta_riassunti_salvati(atto, imp.stato)
+    return True
 
 
 def _oltre_data_minima(atti_pagina: list[dict], imp: Impostazioni) -> bool:
@@ -203,6 +224,7 @@ def _elabora_pagine(page: Page, context: BrowserContext, imp: Impostazioni) -> l
     filtra = bool(imp.dal or imp.al)
     limite_pagine = _limite_pagine(imp)
     numero = 1
+    errori_consecutivi = 0
 
     while True:
         atti_pagina = parse_tabella(page)
@@ -218,10 +240,23 @@ def _elabora_pagine(page: Page, context: BrowserContext, imp: Impostazioni) -> l
         if imp.max_atti is not None:
             da_elaborare = piu_recenti(da_elaborare, imp.max_atti - len(elaborati))
 
+        troppi_errori = False
         for atto in da_elaborare:
             atto["pagina"] = numero
-            _elabora_atto(page, context, atto, imp)
+            if _elabora_atto(page, context, atto, imp):
+                errori_consecutivi = 0
+            else:
+                errori_consecutivi += 1
             elaborati.append(atto)
+            if errori_consecutivi >= MAX_ERRORI_CONSECUTIVI:
+                logger.error(
+                    f"{errori_consecutivi} atti consecutivi non elaborati: probabile problema "
+                    "generale con il sito, mi fermo (la tabella conterrà quanto raccolto finora)"
+                )
+                troppi_errori = True
+                break
+        if troppi_errori:
+            break
 
         # --- condizioni di arresto
         if imp.max_atti is not None and len(elaborati) >= imp.max_atti:
@@ -265,6 +300,7 @@ def stampa_link_pdf(
     ignora_stato: bool = False,
     max_atti: int | None = None,
     max_pagine: int | None = None,
+    url: str | None = None,
 ) -> list[dict]:
     """
     Legge la tabella degli atti (scorrendo le pagine), stampa i link dei PDF di ogni atto e
@@ -291,6 +327,10 @@ def stampa_link_pdf(
       precedenti a `dal` (solo con campo="data_inizio"), non finiscono le pagine o non si
       arriva a `max_pagine`;
     - senza alcun criterio (max_atti, dal, al, max_pagine) si legge solo la prima pagina.
+
+    `url` è l'indirizzo dell'albo (di default quello in config.py).
+    Un atto che non si riesce a elaborare viene registrato nel log e saltato; dopo
+    MAX_ERRORI_CONSECUTIVI atti di fila ci si ferma.
     """
     if riassumi and not scarica:
         raise ValueError("riassumi=True richiede scarica=True")
@@ -324,7 +364,7 @@ def stampa_link_pdf(
         browser, context = crea_contesto(p, headless)
         page = context.new_page()
         try:
-            apri_tabella(page)
+            apri_tabella(page, url)
             return _elabora_pagine(page, context, imp)
         except Exception:
             logger.error("Errore durante lo scraping", exc_info=True)
