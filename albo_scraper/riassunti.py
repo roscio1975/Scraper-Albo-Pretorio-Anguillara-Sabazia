@@ -99,6 +99,6 @@ def riassumi_pdf_locale(
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(richiesta, timeout=300) as risposta:
+    with urllib.request.urlopen(richiesta, timeout=900) as risposta:
         dati = json.load(risposta)
     return dati["message"]["content"].strip()
