@@ -1,26 +1,14 @@
-"""Scrittura della tabella finale in un file HTML.
-"""
+"""Tabella finale degli atti: costruzione e scrittura del file HTML."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from html import escape as esc_html
 from pathlib import Path
+from typing import NamedTuple
 
-from .config import (COLONNE_TABELLA,CSS_DIARIO)
-from .log import (logger,configura_logging)
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-import urllib.request
-import json
-import re
-from .config import (
-    COLONNE_TABELLA,
-    OLLAMA_URL, # Assicurati che sia qui o importata da config
-    PROMPT_DIARIO, # Qui definito sopra in config.py
-    USER_AGENT, # User agent per Playwright
-    MODELLO_LOCALE, # Modello LLM locale
-)
-
+from .config import COLONNE_TABELLA
+from .log import logger
 
 CSS_TABELLA = """
 :root {
@@ -53,8 +41,27 @@ a { color: var(--link); }
 .vuoto { color: var(--muted); }
 """
 
+VUOTO = '<span class="vuoto">—</span>'  # segnaposto per le celle senza contenuto
 
-def righe_tabella(atti: list[dict]) -> list[tuple[str, str, str, str]]:
+
+class Riga(NamedTuple):
+    """Una riga della tabella: un documento PDF di un atto."""
+
+    data: str
+    titolo: str
+    url: str
+    riassunto: str
+
+
+def titolo_leggibile(testo: str) -> str:
+    """
+    Titolo con le iniziali maiuscole e gli spazi normalizzati: i titoli degli atti arrivano
+    tutti in maiuscolo. Nota: `str.title()` porta in "Title Case" anche le sigle (CIG -> Cig).
+    """
+    return " ".join(testo.title().split())
+
+
+def righe_tabella(atti: list[dict]) -> list[Riga]:
     """
     Una riga per ogni PDF collegato a un atto (un atto senza allegati ha una sola
     riga con link e riassunto vuoti). 'Data atto' è la data di inizio pubblicazione.
@@ -66,15 +73,63 @@ def righe_tabella(atti: list[dict]) -> list[tuple[str, str, str, str]]:
         documenti = atto.get("link_pdf") or []
 
         if not documenti:
-            righe.append((data, atto["testo_atto"], "", ""))
+            righe.append(Riga(data, titolo_leggibile(atto["testo_atto"]), "", ""))
             continue
 
         for doc in documenti:
             titolo = atto["testo_atto"]
             if len(documenti) > 1 and doc.get("descrizione"):
                 titolo += f" [{doc['descrizione']}]"
-            righe.append((data, titolo, doc["url"], doc.get("riassunto", "")))
+            righe.append(
+                Riga(data, titolo_leggibile(titolo), doc["url"], doc.get("riassunto", ""))
+            )
     return righe
+
+
+def _cella_testo(testo: str) -> str:
+    """Testo "escapato", oppure il segnaposto se è vuoto."""
+    return esc_html(testo.strip()) or VUOTO
+
+
+def _cella_link(url: str) -> str:
+    """Link "Apri PDF", cliccabile solo per indirizzi http/https."""
+    if not url.startswith(("http://", "https://")):
+        return VUOTO
+    u = esc_html(url, quote=True)
+    return f'<a href="{u}" target="_blank" rel="noopener" title="{u}">Apri PDF</a>'
+
+
+def _riga_html(riga: Riga) -> str:
+    return (
+        "      <tr>"
+        f'<td class="data">{_cella_testo(riga.data)}</td>'
+        f'<td class="titolo">{esc_html(riga.titolo)}</td>'
+        f'<td class="link">{_cella_link(riga.url)}</td>'
+        f'<td class="riassunto">{_cella_testo(riga.riassunto)}</td>'
+        "</tr>"
+    )
+
+
+def tabella_html(righe: list[Riga]) -> str:
+    """La tabella (dentro il suo contenitore scorrevole), pronta da inserire in una pagina."""
+    intestazione = "".join(f"<th>{esc_html(c)}</th>" for c in COLONNE_TABELLA)
+    corpo = "\n".join(_riga_html(r) for r in righe)
+    return (
+        '<div class="contenitore">\n  <table>\n'
+        f"    <thead><tr>{intestazione}</tr></thead>\n    <tbody>\n"
+        f"{corpo}\n    </tbody>\n  </table>\n</div>"
+    )
+
+
+def pagina_html(titolo: str, corpo: str, css: str = CSS_TABELLA) -> str:
+    """Pagina HTML autonoma con `corpo` dentro <body>."""
+    return (
+        '<!DOCTYPE html>\n<html lang="it">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{esc_html(titolo)}</title>\n"
+        f"<style>{css}</style>\n</head>\n<body>\n"
+        f"{corpo}\n</body>\n</html>\n"
+    )
 
 
 def scrivi_tabella(atti: list[dict], percorso: str | Path) -> Path:
@@ -83,427 +138,18 @@ def scrivi_tabella(atti: list[dict], percorso: str | Path) -> Path:
     Data atto | Titolo atto | Link remoto al PDF | Riassunto.
     Tutti i testi sono "escapati"; i link sono cliccabili solo se http/https.
     """
-    vuoto = '<span class="vuoto">—</span>'
     righe = righe_tabella(atti)
-
-    corpo = []
-    for data, titolo, url, riassunto in righe:
-        titolo = titolo.title()
-        if url.startswith(("http://", "https://")):
-            u = esc_html(url, quote=True)
-            cella_link = f'<a href="{u}" target="_blank" rel="noopener" title="{u}">Apri PDF</a>'
-        else:
-            cella_link = vuoto
-        corpo.append(
-            "      <tr>"
-            f'<td class="data">{esc_html(data) or vuoto}</td>'
-            f'<td class="titolo">{esc_html(" ".join(titolo.split()))}</td>'
-            f'<td class="link">{cella_link}</td>'
-            f'<td class="riassunto">{esc_html(riassunto.strip()) or vuoto}</td>'
-            "</tr>"
-        )
-
-    n_documenti = sum(1 for r in righe if r[2])
+    n_documenti = sum(1 for r in righe if r.url)
     generato = datetime.now().strftime("%d-%m-%Y %H:%M")
-    intestazione = "".join(f"<th>{esc_html(c)}</th>" for c in COLONNE_TABELLA)
 
-    pagina = (
-        '<!DOCTYPE html>\n<html lang="it">\n<head>\n<meta charset="utf-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        "<title>Atti pubblicati</title>\n"
-        f"<style>{CSS_TABELLA}</style>\n</head>\n<body>\n"
+    corpo = (
         "<h1>Atti pubblicati</h1>\n"
         f'<p class="meta">Generato il {generato} · {len(atti)} atti · {n_documenti} documenti</p>\n'
-        '<div class="contenitore">\n  <table>\n'
-        f"    <thead><tr>{intestazione}</tr></thead>\n    <tbody>\n"
-        + "\n".join(corpo)
-        + "\n    </tbody>\n  </table>\n</div>\n</body>\n</html>\n"
+        + tabella_html(righe)
     )
 
     percorso = Path(percorso)
     percorso.parent.mkdir(parents=True, exist_ok=True)
-    percorso.write_text(pagina, encoding="utf-8")
+    percorso.write_text(pagina_html("Atti pubblicati", corpo), encoding="utf-8")
     logger.debug(f"Tabella HTML scritta in {percorso}: {len(righe)} righe")
     return percorso
-
-def _pulisci_riga_atti(testo: str) -> dict | None:
-    """
-    Estrae i dati da una riga di tabella HTML locale.
-    Ritorna un dict o None se non ha contenuto.
-    Cerca <td> con testo che contiene 'Data atto' o il pattern della data, 
-    oppure usa gli indici (4a colonna = riassunto).
-    """
-    if not testo:
-        return None
-
-    # Selezioniamo le celle tramite regex semplice su innerText della riga o split su tab
-    # Usiamo Playwright per estrarre il contenuto pulito se possibile, ma per leggere HTML statico,
-    # useremo una logica di splitting basata sulle colonne note (Data, Titolo, Link, Riassunto).
-    
-    # Qui semplifichiamo: assumiamo che l'HTML abbia <tr> e dentro <td>.
-    righe = re.findall(r'<td[^>]*>(.*?)</td>', testo, flags=re.DOTALL | re.IGNORECASE)
-    
-    if len(righe) < 4:
-        # Se non ha almeno 4 colonne, saltiamo
-        return None
-
-    data_inizio_str = righe[0].strip().replace("--", "").split()[0] if righe[0] else ""
-    titolo = re.sub(r'<[^>]+>', '', righe[1]).strip()
-    link = righe[2].strip() # Spesso vuoto o link relativo/assoluto
-    riassunto = re.sub(r'<[^>]+>', '', righe[3]).strip()
-
-    return {
-        "data": data_inizio_str,
-        "titolo": titolo,
-        "link": link,
-        "riassunto": riassunto,
-    }
-
-def estrai_riassunti_dal_html(percorso_html: Path | str) -> list[dict]:
-    """Legge il file HTML e restituisce una lista di dict con i dati dei riassunti."""
-    with open(percorso_html, 'r', encoding='utf-8') as f:
-        html = f.read()
-
-    # Carica l'HTML localmente in un browser per renderizzare e leggere meglio (opzionale ma robusto)
-    # Oppure parse puro. Usiamo Playwright come nel resto del progetto.
-    
-    if not logger.handlers:
-        configura_logging()
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent=USER_AGENT)
-        page = context.new_page()
-        
-        try:
-            page.set_content(html, wait_until="domcontentloaded")
-            
-            # Seleziona la tabella generata da scrivi_tabella (spesso ha class="contenitore" o simile)
-            # Cerchiamo il primo <tbody> con tr
-            rows = page.query_selector_all("body .contenitore table tbody tr")
-            
-            atti_estratti = []
-            for row in rows:
-                try:
-                    # Costruiamo un selectore per la riga e ne leggiamo le celle pulite
-                    testo_riga = row.inner_text() # include i tag? inner_text no, strip_tags sì? playwright.playwright.text_content
-                    # playwright.playwright.locator("td").all_inner_text() è meglio.
-                    
-                    # Usiamo il locatore per le celle td
-                    cells = row.query_selector_all("td")
-                    if len(cells) >= 4:
-                        # Estraiamo il testo pulito delle prime 4 colonne
-                        c1 = cells[0].text_content()
-                        c2 = cells[1].text_content()
-                        c3 = cells[2].text_content()
-                        c4 = cells[3].text_content()
-                        
-                        # Logica per identificare la data e il riassunto in base alla posizione o al contenuto
-                        # La tabella ha colonne: Data, Titolo, Link, Riassunto (dall'HTML generato)
-                        
-                        if "Data" in c1 or re.search(r"\d{2}-\d{2}-\d{4}", c1):
-                            atti_estratti.append({
-                                "data": c1.strip(),
-                                "titolo": c2.strip(),
-                                "link": c3,
-                                "riassunto": c4.strip()
-                            })
-                except Exception as e:
-                    # Se la riga è corrotta o non standardabile, saltala
-                    continue
-            
-            return atti_estratti
-            
-        finally:
-            browser.close()
-
-def genera_diario(percorso_html: Path | str, modello: str = "llama3.1:8b") -> Path | None:
-    """
-    Legge i riassunti dal file HTML (usando --output) e chiama Ollama per generare un diario.
-    Restituisce il percorso del file di diario salvato (diario_atti.txt).
-    """
-    import json
-    import urllib.request
-    
-    # Estrai dati
-    try:
-        liste_riassunti = estrai_riassunti_dal_html(percorso_html)
-    except Exception as e:
-        logger.error(f"Errore nell'analisi HTML per il diario: {e}")
-        return None
-
-    if not liste_riassunti:
-        logger.warning("Nessun atto trovato nell'HTML fornito.")
-        return None
-
-    # Costruisci il prompt da mandare a Ollama
-    # Prepara i dati in formato leggibile (JSON minified o testo pulito)
-    prompt = PROMPT_DIARIO.replace("{dati_atti}", json.dumps(liste_riassunti, indent=2))
-
-    logger.info(f"Invio richiesta a Ollama per il diario ({len(liste_riassunti)} eventi)...")
-    
-    payload = {
-        "model": modello,
-        "stream": False,
-        "options": {"num_ctx": 8192}, # Ridurre consumo se serve
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-    }
-    logger.debug(f"Payload inviato a Ollama: {json.dumps(payload, indent=2)}")
-
-    try:
-        richiesta = urllib.request.Request(
-            f"{OLLAMA_URL}/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        
-        with urllib.request.urlopen(richiesta, timeout=900) as risposta:
-            dati = json.loads(risposta.read().decode("utf-8"))
-            diario_testo = dati.get("message", {}).get("content", "").strip()
-            
-    except Exception as e:
-        logger.error(f"Errore nella chiamata a Ollama per il diario: {e}")
-        return None
-
-    # Salva il diario in un file dedicato o sovrascrive l'output?
-    # Meglio creare un nuovo file "diario_atti.txt" accanto al progetto
-    from .config import DIARIO_FILE
-    percorso_output = Path(DIARIO_FILE)
-    
-    try:
-        with open(percorso_output, 'w', encoding='utf-8') as f:
-            f.write(diario_testo)
-        logger.info(f"Diario salvato in {percorso_output}")
-        return percorso_output
-    except Exception as e:
-        logger.error(f"Errore nella scrittura del file diario: {e}")
-        return None
-
-def _leggi_riassunti_dal_html(percorso_html: Path | str) -> list[dict]:
-    if not percorso_html:
-        return []
-
-    try:
-        with open(percorso_html, 'r', encoding='utf-8') as f:
-            html = f.read()
-        
-        if not logger.handlers:
-            configura_logging()
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(user_agent=USER_AGENT)
-            page = context.new_page()
-            
-            try:
-                page.set_content(html, wait_until="domcontentloaded")
-                # Troviamo tutte le righe della tabella
-                rows = page.query_selector_all("body .contenitore table tbody tr")
-                
-                atti_estratti = []
-                for row in rows:
-                    try:
-                        cells = row.query_selector_all("td")
-                        if len(cells) >= 4:
-                            c1 = cells[0].text_content() # Data
-                            c2 = cells[1].text_content() # Titolo
-                            c3_elem = cells[2] # Cellula link
-                            c4 = cells[3].text_content() # Riassunto
-                            
-                            # Estraiamo l'URL vero dall'elemento <a>
-                            link_url = ""
-                            anchor = c3_elem.query_selector("a")
-                            if anchor:
-                                link_url = anchor.get_attribute("href")
-                            
-                            if c1 and re.search(r'\d{2}-\d{2}-\d{4}', c1):
-                                atti_estratti.append({
-                                    "data": c1,
-                                    "titolo": c2,
-                                    "link": link_url,
-                                    "riassunto": c4,
-                                })
-                    except Exception:
-                        continue
-                
-                return atti_estratti
-            finally:
-                browser.close()
-    except Exception as e:
-        logger.error(f"Errore nella lettura HTML per diario: {e}")
-        return []
-
-def format_markdown_to_html(text: str) -> str:
-    """Converte i simboli Markdown comuni in tag HTML semplici."""
-    # Grassetto
-    text = text.replace("**", "**") # tieni per ora
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
-    # Elenchi (molto semplici)
-    if "-" in text:
-        lines = text.split('\n')
-        new_lines = []
-        for line in lines:
-            if line.strip().startswith('- '):
-                new_lines.append(f"<li>{line[2:].strip()}</li>")
-            else:
-                new_lines.append(line)
-        text = '\n'.join(new_lines)
-    return text
-
-def crea_diario_html(percorso: Path | str, modello: str = MODELLO_LOCALE) -> Path | None:
-    import re
-    import json
-    import urllib.request
-    from pathlib import Path
-    from .config import OLLAMA_URL, PROMPT_DIARIO, DIARIO_FILE
-    from .log import logger
-    from .config import USER_AGENT
-
-    sinistra_svg = "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7f/Sinistra_Italiana.svg/250px-Sinistra_Italiana.svg.png" #"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23d71920' width='100' height='100'/><text x='50' y='60' font-family='Arial' font-size='14' fill='white' text-anchor='middle'>SI</text></svg>"
-    avs_svg = "https://verdisinistra.it/wp-content/uploads/2022/07/Alleanza-Verdi-Sinistra-10cm-copia@2x.png"# "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23d71920' width='100' height='100'/><text x='50' y='60' font-family='Arial' font-size='14' fill='white' text-anchor='middle'>AVS</text></svg>"
-        
-    if not percorso:
-        raise ValueError("Serve un percorso HTML valido per la generazione del diario.")
-        
-    if not Path(percorso).exists():
-        logger.error(f"File HTML non trovato: {percorso}")
-        return None
-
-    # Estrai dati
-    liste_riassunti = _leggi_riassunti_dal_html(percorso)
-    
-    if not liste_riassunti:
-        logger.warning("Nessun atto trovato nell'HTML fornito.")
-        return None
-
-    # Prompt LLM per il diario (Aggiornato per evitare Markdown pesante)
-    prompt_texto = PROMPT_DIARIO.replace("{dati_atti}", json.dumps(liste_riassunti, indent=2))
-    
-    try:
-        payload = {
-            "model": modello,
-            "stream": False,
-            "options": {"num_ctx": 8192}, 
-            "messages": [
-                {"role": "user", "content": f"{prompt_texto}\n\nInstruzioni extra: Non usare formattazioni Markdown complesse. Usa paragrafi semplici e elenchi puntati se necessario."}
-            ],
-        }
-        
-        richiesta = urllib.request.Request(
-            f"{OLLAMA_URL}/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        
-        with urllib.request.urlopen(richiesta, timeout=900) as risposta:
-            dati = json.loads(risposta.read().decode("utf-8"))
-            diario_testo = dati.get("message", {}).get("content", "").strip()
-            
-    except Exception as e:
-        logger.error(f"Errore nella chiamata a Ollama: {e}")
-        return None
-
-    # Salvataggio file HTML customizzato con header partiti politici
-    percorso_output = Path(percorso).with_name("diario_atti.html")
-    
-    # Trasformiamo il testo del diario in HTML semplice (pulizia Markdown)
-    html_corpo_diario = format_markdown_to_html(diario_testo).replace("\n", "<br>")
-    
-    html_tabella_completa = ""
-    for r in liste_riassunti:
-        d = r.get("data", "")
-        t = r.get("titolo", "").replace("<", "&lt;").replace(">", "&gt;")
-        l = r.get("link", "")
-        ri = r.get("riassunto", "") or "—"
-        
-        # Verifichiamo se il link esiste e se è valido
-        if l and l.startswith(("http://","https://")):
-            link_html = f'<a href="{l}" target="_blank">Apri PDF</a>'
-        else:
-            link_html = "—"
-        
-        html_tabella_completa += f'<tr>\n'
-        html_tabella_completa += f'  <td class="data">{esc_html(d)}</td>\n'
-        html_tabella_completa += f'  <td class="titolo">{t}</td>\n'
-        html_tabella_completa += f'  <td class="link">{link_html}</td>\n'
-        html_tabella_completa += f'  <td class="riassunto">{esc_html(ri)}</td>\n'
-        html_tabella_completa += f'</tr>\n'
-
-    html_tabella_header = """
-<div class='dettaglio'><h2>Dettaglio degli atti</h2></div>
-<table border='1'>
-<thead>
-<tr>
-<th>Data</th>
-<th>Titolo atto</th>
-<th>Link remoto al PDF</th>
-<th>Riassunto</th>
-</tr>
-</thead>
-<tbody>"""
-    
-    html_tabella_footer = """</tbody></table>"""
-    
-    # CSS
-    css_diario = """
-<style>
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff; --fg: #1f2328; --muted: #6b7280; --bordo: #d8dee4;
-  --testata: #f3f4f6; --hover: #f8fafc; --link: #0b5cad;
-}
-body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 2rem; line-height: 1.5; }
-h1 { font-size: 2.5rem; text-align: center; margin-bottom: 0.5rem; }
-.subtitle { text-align: center; color: var(--muted); font-size: 1.2rem; margin-top: -0.5rem; }
-.header-container { text-align: center; margin-bottom: 2rem; }
-.logo { display:inline-block; margin: 0 0.5rem; vertical-align: middle; width: 48px; height: auto; }
-.logos { display:flex; justify-content:center; align-items:center; gap:0.5rem; }
-.diario { white-space: pre-line; border-left: 2px solid var(--bordo); padding-left:1rem; font-style:italic; margin-bottom:2rem; background: #f9fafb; padding:1rem; border-radius:8px; }
-.dettaglio { text-align:center; margin-top:2rem; }
-table { border-collapse: collapse; width: 100%; max-width: 1000px; margin: 0 auto; border: 1px solid var(--bordo); border-radius:8px; overflow:hidden; }
-th, td { padding: .6rem .8rem; text-align: left; vertical-align: top; border-bottom: 1px ==d; }
-thead th { background: var(--testata); font-size: .9rem; }
-td.data { white-space: nowrap; min-width:80px; }
-td.link { white-space: nowrap; }
-</style>"""
-
-    html_finale = f"""
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Diario - Sinistra Italia e AVS</title>
-    <style>{css_diario}</style>
-</head>
-<body>
-    <div class='header-container'>
-        <div class='logos'>
-            <img src='{sinistra_svg}' alt='Sinistra Italiana' class='logo'>
-            <img src='{avs_svg}' alt='AVS' class='logo'>
-        </div>
-    </div>
-    <h1>Sinistra Italia e AVS informano</h1>
-    <p class='subtitle'>Cosa è successo questa settimana nel Comune di Anguillara Sabazia</p>
-    <div class='diario'>{html_corpo_diario}</div>
-    <div class='dettaglio'><h2>Dettaglio degli atti</h2></div>
-    {html_tabella_header}
-    {html_tabella_completa}
-    {html_tabella_footer}
-</body>
-</html>
-"""
-    # Sostituzioni SVG
-    
-    html_finale = html_finale.replace("{sinistra_svg}", sinistra_svg).replace("{avs_svg}", avs_svg)
-
-    try:
-        percorso_output.parent.mkdir(parents=True, exist_ok=True)
-        percorso_output.write_text(html_finale, encoding="utf-8")
-        logger.info(f"Diario salvato in {percorso_output}")
-        return percorso_output
-    except Exception as e:
-        logger.error(f"Errore scrittura file diario: {e}")
-        return None
