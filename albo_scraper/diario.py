@@ -14,6 +14,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from .config import (
+    COLONNE_TABELLA,
     LOGHI_DIARIO,
     MODELLO_LOCALE,
     NUM_CTX,
@@ -45,8 +46,56 @@ h1 { font-size: 2.2rem; text-align: center; margin-bottom: .5rem; }
 .diario p { margin: 0 0 .75rem; }
 .diario ul { margin: 0 0 .75rem 1.25rem; padding: 0; }
 .dettaglio h2 { text-align: center; margin: 2rem 0 1rem; }
-.contenitore { max-width: 1000px; margin: 0 auto; }
 """
+
+# Tabella del diario. Su schermi larghi: colonne a larghezza fissa, con il titolo stretto e a
+# carattere più piccolo (il riassunto prende lo spazio rimasto). Sotto i 720 px: una "scheda"
+# per atto al posto della tabella; le etichette delle schede (Data atto, Titolo atto...)
+# vengono da COLONNE_TABELLA, al posto di {ETICHETTE}.
+_CSS_TABELLA_DIARIO = """
+.tabella-diario { --larghezza-titolo: 14%; }  /* colonna del titolo: aumenta per allargarla */
+.tabella-diario .contenitore { max-width: 1000px; margin: 0 auto; }
+.tabella-diario table { table-layout: fixed; min-width: 0; }
+.tabella-diario th, .tabella-diario td { box-sizing: border-box; }
+.tabella-diario th:nth-child(1), .tabella-diario td:nth-child(1) { width: 6.5rem; }
+.tabella-diario th:nth-child(2), .tabella-diario td:nth-child(2) { width: var(--larghezza-titolo); }
+.tabella-diario th:nth-child(3), .tabella-diario td:nth-child(3) { width: 5.5rem; }
+.tabella-diario td.titolo { font-size: .8rem; line-height: 1.35; overflow-wrap: anywhere;
+                            hyphens: auto; }
+.tabella-diario td.riassunto { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .tabella-diario .contenitore { border: none; overflow: visible; }
+  .tabella-diario table, .tabella-diario tbody,
+  .tabella-diario tr, .tabella-diario td { display: block; }
+  .tabella-diario thead { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                          clip: rect(0 0 0 0); }
+  .tabella-diario tr { border: 1px solid var(--bordo); border-radius: 8px;
+                       padding: .5rem .85rem; margin-bottom: .75rem; }
+  .tabella-diario td { width: auto !important; padding: .35rem 0; border: none;
+                       white-space: normal; }
+  .tabella-diario td::before { display: block; font-size: .7rem; font-weight: 600;
+                               text-transform: uppercase; letter-spacing: .04em;
+                               color: var(--muted); }
+  .tabella-diario td.titolo { font-size: .95rem; }
+  {ETICHETTE}
+}
+"""
+
+
+def _css_tabella_diario() -> str:
+    """CSS della tabella del diario, con le etichette delle colonne per la vista a schede."""
+    classi = ("data", "titolo", "link", "riassunto")  # classi delle celle (vedi report.py)
+    etichette = "\n  ".join(
+        f'.tabella-diario td.{classe}::before {{ content: "{_testo_css(nome)}"; }}'
+        for classe, nome in zip(classi, COLONNE_TABELLA)
+    )
+    return _CSS_TABELLA_DIARIO.replace("{ETICHETTE}", etichette)
+
+
+def _testo_css(testo: str) -> str:
+    """Testo adatto a una stringa CSS tra virgolette."""
+    return testo.replace("\\", "\\\\").replace('"', '\\"')
 
 
 # ------------------------------------------------------------ lettura della tabella
@@ -199,9 +248,10 @@ def _pagina_diario(testo_diario: str, atti: list[dict]) -> str:
         + f'<p class="sottotitolo">{esc_html(SOTTOTITOLO_DIARIO)}</p>\n'
         + f'<div class="diario">\n{testo_a_html(testo_diario) or VUOTO}\n</div>\n'
         + '<div class="dettaglio"><h2>Dettaglio degli atti</h2></div>\n'
-        + tabella_html(righe)
+        + f'<div class="tabella-diario">\n{tabella_html(righe)}\n</div>'
     )
-    return pagina_html(TITOLO_PAGINA_DIARIO, corpo, CSS_TABELLA + CSS_DIARIO)
+    css = CSS_TABELLA + CSS_DIARIO + _css_tabella_diario()
+    return pagina_html(TITOLO_PAGINA_DIARIO, corpo, css)
 
 
 # ------------------------------------------------------------------------- principale
