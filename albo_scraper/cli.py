@@ -12,8 +12,10 @@ from .config import (
     DESCRIZIONI_ESCLUSE,
     LOG_FILE,
     MODELLO_LOCALE,
+    MODELLO_OMLX,
     OCR_LINGUA,
     OLLAMA_URL,
+    OMLX_URL,
     STATO_FILE,
 )
 from .debug import debug_modale
@@ -70,7 +72,10 @@ esempi:
   python scraper_albo.py --max-atti 25                    i 25 atti più recenti (scorre le pagine)
   python scraper_albo.py --max-pagine 3                   solo le prime 3 pagine della tabella
   python scraper_albo.py --dal 01-10-2026 --al oggi       solo gli atti in quell'intervallo
-  python scraper_albo.py --riassumi true --modello gemma3:12b
+  python scraper_albo.py --riassumi true                  riassunti con Omlx (provider predefinito)
+  python scraper_albo.py --riassumi true --provider ollama
+                                                          riassunti con Ollama e il modello locale
+  python scraper_albo.py --riassumi true --provider ollama --modello gemma3:12b
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
@@ -87,7 +92,7 @@ def _crea_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Scraper dell'albo pretorio: legge gli atti, ricava i link dei PDF,\n"
-            "li scarica e (opzionale) li riassume con un LLM locale (Ollama)."
+            "li scarica e (opzionale) li riassume con un LLM (Omlx oppure Ollama)."
         ),
         formatter_class=_HelpFormatter,
         epilog=EPILOGO_HELP,
@@ -147,13 +152,20 @@ def _crea_parser() -> argparse.ArgumentParser:
         help="campo su cui applicare il filtro per data",
     )
     altre.add_argument(
-        "--riassumi", default=False,
-        help="riassume ogni PDF scaricato (richiede --scarica true)", **bool_kw,
+        "--provider", choices=["omlx", "ollama"], default="omlx",
+        help="modalità da usare per i riassunti: omlx (API OpenAI-compatibile, "
+        "limite 10000 caratteri) o ollama (modello locale, limite 12000 caratteri)",
     )
     altre.add_argument(
-        "--modello", default=MODELLO_LOCALE,
-        help="modello Ollama usato per i riassunti con --riassumi true "
-        "(nome come in `ollama list`, es. gemma3:12b)",
+        "--riassumi", default=False,
+        help="riassume ogni PDF scaricato (richiede --scarica true) - testo limitato a 12000 caratteri "
+        "per default con Ollama locale o 10000 caratteri con Omlx (come scelto con --provider)",
+        **bool_kw,
+    )
+    altre.add_argument(
+        "--modello", default=None,
+        help=f"modello LLM da usare per i riassunti (default: {MODELLO_OMLX} con "
+        f"--provider omlx, {MODELLO_LOCALE} con --provider ollama)",
     )
     altre.add_argument(
         "--stato", default=STATO_FILE, metavar="FILE",
@@ -180,6 +192,11 @@ def _crea_parser() -> argparse.ArgumentParser:
         "altrimenti locale)",
     )
     altre.add_argument(
+        "--omlx-url", default=OMLX_URL, metavar="URL",
+        help="indirizzo base dell'API Omlx, OpenAI-compatibile (default: variabile "
+        "d'ambiente OMLX_URL, altrimenti locale)",
+    )
+    altre.add_argument(
         "--invia-mail", default=True,
         help="invia una mail con la tabella finale in allegato (destinatari in receipts.txt, "
         "password SMTP nella variabile d'ambiente SMTP_PASSWORD)", **bool_kw,
@@ -193,9 +210,10 @@ def _crea_parser() -> argparse.ArgumentParser:
 
     altre.add_argument(
         "--diario", default=False,
-        help="non fa scraping: crea un diario in linguaggio semplice (testo di Ollama + tabella) "
-        "a partire dal file --output già prodotto e lo salva come diario_atti.html nella "
-        "stessa cartella. Usa --modello e --ollama-url; non invia la mail", **bool_kw,
+        help="non fa scraping: crea un diario in linguaggio semplice (testo del provider "
+        "LLM + tabella) a partire dal file --output già prodotto e lo salva come "
+        "diario_atti.html nella stessa cartella. Usa --provider, --modello e l'URL del "
+        "provider; non invia la mail", **bool_kw,
     )
 
     return parser
@@ -214,10 +232,14 @@ def _leggi_argomenti(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _modalita_diario(args: argparse.Namespace) -> None:
     """--diario: crea il diario HTML dal file --output, senza fare scraping."""
-    logger.info(f"Generazione del diario HTML (input: {args.output})")
+    logger.info(f"Generazione del diario HTML (input: {args.output}, provider: {args.provider})")
+    url = args.omlx_url if args.provider == "omlx" else args.ollama_url
     try:
         percorso = crea_diario_html(
-            Path(args.output), modello=args.modello, ollama_url=args.ollama_url
+            Path(args.output),
+            provider=args.provider,
+            modello=args.modello,
+            url=url,
         )
     except Exception:
         logger.error("Errore nella generazione del diario HTML", exc_info=True)
@@ -250,6 +272,7 @@ def main(argv: list[str] | None = None) -> None:
         debug_modale(url=args.url)
         return
 
+    llm_url = args.omlx_url if args.provider == "omlx" else args.ollama_url
     atti = stampa_link_pdf(
         headless=args.headless,
         scarica=args.scarica,
@@ -258,8 +281,9 @@ def main(argv: list[str] | None = None) -> None:
         al=args.al,
         campo=args.campo,
         riassumi=args.riassumi,
+        provider=args.provider,
         modello=args.modello,
-        ollama_url=args.ollama_url,
+        llm_url=llm_url,
         ocr=args.ocr,
         ocr_lingua=args.ocr_lingua,
         stato_file=args.stato or None,

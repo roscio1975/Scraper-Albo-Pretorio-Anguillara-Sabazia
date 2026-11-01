@@ -1,7 +1,7 @@
 # Scraper albo pretorio
 
 Legge gli atti pubblicati sull'albo (cloud.urbi.it, Comune di Anguillara Sabazia, ma dovrebbe essere compatibili con tutti gli albi pretori che usano la piattaforma ministeriale cloud.urbi)
-scarica i PDF allegati, li riassume con un LLM locale (Ollama) e scrive una tabella HTML.
+scarica i PDF allegati, li riassume con un LLM (Omlx oppure Ollama, scelto con `--provider`) e scrive una tabella HTML.
 Opzioni complete: `python scraper_albo.py --help`.
 
 ## Installazione
@@ -14,7 +14,9 @@ source .venv/bin/activate                 # da rifare in ogni nuovo terminale
 python -m pip install -r requirements.txt
 playwright install chromium               # una volta sola
 brew install tesseract tesseract-lang     # OCR dei PDF scansionati (macOS)
-ollama pull <modello>                     # per i riassunti; Ollama deve essere attivo
+# riassunti: Omlx (predefinito) oppure Ollama
+#   Omlx: server attivo su OMLX_URL (default http://127.0.0.1:8000/v1)
+#   Ollama: ollama pull <modello> e Ollama attivo
 ```
 
 Su Debian/Ubuntu al posto di brew: `apt install tesseract-ocr tesseract-ocr-ita`.
@@ -22,70 +24,147 @@ Su Debian/Ubuntu al posto di brew: `apt install tesseract-ocr tesseract-ocr-ita`
 ## Uso
 
 ```bash
-usage: scraper_albo.py [-h] [--livello-log {debug,info,error}] [--log {console,file,entrambi}] [--debug [true|false]] [--scarica [true|false]] [--file-log FILE_LOG] [--output OUTPUT]
-                       [--cartella CARTELLA] [--headless [true|false]] [--dal DAL] [--al AL] [--campo {data_inizio,data_fine,periodo}] [--riassumi [true|false]] [--modello MODELLO]
-                       [--stato FILE] [--ignora-stato [true|false]] [--ocr [true|false]] [--ocr-lingua LINGUA] [--ollama-url URL] [--escludi DESCRIZIONE] [--max-atti MAX_ATTI]
+usage: scraper_albo.py [-h] [--livello-log {debug,info,error}]
+                       [--log {console,file,entrambi}] [--debug [true|false]]
+                       [--scarica [true|false]] [--file-log FILE_LOG]
+                       [--output OUTPUT] [--cartella CARTELLA]
+                       [--headless [true|false]] [--url URL] [--dal DAL]
+                       [--al AL] [--max-atti N] [--max-pagine N]
+                       [--campo {data_inizio,data_fine,periodo}]
+                       [--provider {omlx,ollama}] [--riassumi [true|false]]
+                       [--modello MODELLO] [--stato FILE]
+                       [--ignora-stato [true|false]] [--ocr [true|false]]
+                       [--ocr-lingua LINGUA] [--ollama-url URL]
+                       [--omlx-url URL] [--invia-mail [true|false]]
+                       [--escludi DESCRIZIONE] [--diario [true|false]]
 
 Scraper dell'albo pretorio: legge gli atti, ricava i link dei PDF,
-li scarica e (opzionale) li riassume con un LLM locale (Ollama).
-
-options:
-  -h, --help            show this help message and exit
+li scarica e (opzionale) li riassume con un LLM (Omlx oppure Ollama).
 
 opzioni principali:
+  -h, --help            mostra questo messaggio ed esce
   --livello-log {debug,info,error}
                         livello minimo dei messaggi registrati (default: info)
   --log {console,file,entrambi}
                         dove scrivere il log (default: entrambi)
-  --debug [true|false]  modalità debug: salva HTML e screenshot della modale della prima riga ed esce, senza scaricare nulla (browser visibile se c'è uno schermo) (default: False)
+  --debug [true|false]  modalità debug: salva HTML e screenshot della tabella
+                        (con la paginazione) e della modale della prima riga,
+                        poi esce senza scaricare nulla (browser visibile se
+                        c'è uno schermo) (default: False)
   --scarica [true|false]
-                        scarica i PDF (false = stampa solo i link) (default: True)
+                        scarica i PDF (false = stampa solo i link) (default:
+                        True)
 
 altre opzioni:
   --file-log FILE_LOG   nome del file di log (default: scraper_albo.log)
-  --output OUTPUT       file HTML in cui scrivere la tabella finale (data, titolo, link PDF, riassunto) (default: tabella_atti.html)
+  --output OUTPUT       file HTML in cui scrivere la tabella finale (data,
+                        titolo, link PDF, riassunto) (default:
+                        tabella_atti.html)
   --cartella CARTELLA   cartella dei PDF scaricati (default: download_atti)
   --headless [true|false]
                         browser senza finestra (default: True)
+  --url URL             indirizzo della pagina dell'albo (default: quello di
+                        Anguillara Sabazia, impostato in config.py) (default:
+                        None)
   --dal DAL             filtro data: da (GG-MM-AAAA o 'oggi') (default: None)
   --al AL               filtro data: a (GG-MM-AAAA o 'oggi') (default: None)
+  --max-atti N          elabora al massimo N atti, partendo dal più recente
+                        per data dell'atto e passando alle pagine successive
+                        se serve (dopo l'eventuale filtro --dal/--al; gli atti
+                        già elaborati contano nel limite) (default: None)
+  --max-pagine N        legge al massimo N pagine della tabella. Senza --max-
+                        atti, --dal/--al né --max-pagine si legge solo la
+                        prima pagina (default: None)
   --campo {data_inizio,data_fine,periodo}
-                        campo su cui applicare il filtro per data (default: data_inizio)
+                        campo su cui applicare il filtro per data (default:
+                        data_inizio)
+  --provider {omlx,ollama}
+                        modalità da usare per i riassunti: omlx (API OpenAI-
+                        compatibile, limite 10000 caratteri) o ollama (modello
+                        locale, limite 12000 caratteri) (default: omlx)
   --riassumi [true|false]
-                        riassume ogni PDF scaricato (richiede --scarica true) (default: False)
-  --modello MODELLO     modello Ollama usato per i riassunti con --riassumi true (nome come in ollama list, es. gemma3:12b) (default: llama3.1:8b)
-  --stato FILE          file JSON che ricorda i documenti già scaricati e riassunti, per non rifarli (stringa vuota = non usare la memoria) (default: stato_atti.json)
+                        riassume ogni PDF scaricato (richiede --scarica true)
+                        - testo limitato a 12000 caratteri per default con
+                        Ollama locale o 10000 caratteri con Omlx (come scelto
+                        con --provider) (default: False)
+  --modello MODELLO     modello LLM da usare per i riassunti (default:
+                        Qwen3.5-9B-MLX-4bit con --provider omlx, llama3.1:8b
+                        con --provider ollama) (default: None)
+  --stato FILE          file JSON che ricorda i documenti già scaricati e
+                        riassunti, per non rifarli (stringa vuota = non usare
+                        la memoria) (default: stato_atti.json)
   --ignora-stato [true|false]
-                        rifà tutto anche per i documenti già registrati (il file di stato viene comunque aggiornato) (default: False)
-  --ocr [true|false]    legge con l'OCR i PDF scansionati prima di riassumerli (richiede Tesseract) (default: True)
-  --ocr-lingua LINGUA   lingua/e di Tesseract per l'OCR, es. ita oppure ita+eng (default: ita)
-  --ollama-url URL      indirizzo del server Ollama (default: variabile d'ambiente OLLAMA_URL, altrimenti locale) (default: http://localhost:11434)
+                        rifà tutto anche per i documenti già registrati (il
+                        file di stato viene comunque aggiornato) (default:
+                        False)
+  --ocr [true|false]    legge con l'OCR i PDF scansionati prima di riassumerli
+                        (richiede Tesseract) (default: True)
+  --ocr-lingua LINGUA   lingua/e di Tesseract per l'OCR, es. ita oppure
+                        ita+eng (default: ita)
+  --ollama-url URL      indirizzo del server Ollama (default: variabile
+                        d'ambiente OLLAMA_URL, altrimenti locale) (default:
+                        http://localhost:11434)
+  --omlx-url URL        indirizzo base dell'API Omlx, OpenAI-compatibile
+                        (default: variabile d'ambiente OMLX_URL, altrimenti
+                        locale) (default: http://127.0.0.1:8000/v1)
+  --invia-mail [true|false]
+                        invia una mail con la tabella finale in allegato
+                        (destinatari in receipts.txt, password SMTP nella
+                        variabile d'ambiente SMTP_PASSWORD) (default: True)
   --escludi DESCRIZIONE
-                        descrizione di un allegato da escludere, come appare nella modale (si può ripetere); si aggiunge a quelle già escluse: VISTO CONTABILE PER LIQUIDAZIONI (default:
-                        None)
-  --max-atti MAX_ATTI   Numero massimo di atti da processare (dal più recente) (default: None)
-  --invia-mail          invia una mail con l'allegato alla tabella finale (default: False)
+                        descrizione di un allegato da escludere, come appare
+                        nella modale (si può ripetere); si aggiunge a quelle
+                        già escluse: VISTO CONTABILE PER LIQUIDAZIONI
+                        (default: None)
+  --diario [true|false]
+                        non fa scraping: crea un diario in linguaggio semplice
+                        (testo del provider LLM + tabella) a partire dal file
+                        --output già prodotto e lo salva come diario_atti.html
+                        nella stessa cartella. Usa --provider, --modello e
+                        l'URL del provider; non invia la mail (default: False)
 
 esempi:
-  python scraper_albo.py                                  link + download dei PDF
+  python scraper_albo.py                                  link + download dei PDF (prima pagina)
   python scraper_albo.py --scarica false                  solo link, niente download
-  python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
-  python scraper_albo.py --debug true                     salva HTML/screenshot della modale
-  python scraper_albo.py --output risultati.html         nome del file HTML con la tabella finale
+  python scraper_albo.py --max-atti 25                    i 25 atti più recenti (scorre le pagine)
+  python scraper_albo.py --max-pagine 3                   solo le prime 3 pagine della tabella
   python scraper_albo.py --dal 01-10-2026 --al oggi       solo gli atti in quell'intervallo
-  python scraper_albo.py --riassumi true --modello gemma3:12b
+  python scraper_albo.py --riassumi true                  riassunti con Omlx (provider predefinito)
+  python scraper_albo.py --riassumi true --provider ollama
+                                                          riassunti con Ollama e il modello locale
+  python scraper_albo.py --riassumi true --provider ollama --modello gemma3:12b
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
-  python scraper_albo.py --max-atti 5 --invia-mail         processa gli ultimi 5 atti e invia la mail
-
+  python scraper_albo.py --invia-mail false               non invia la tabella per mail
+  python scraper_albo.py --output risultati.html          nome del file HTML con la tabella finale
+  python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto
+  python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
+  python scraper_albo.py --debug true                     salva HTML/screenshot di tabella e modale
+  python scraper_albo.py --url https://cloud.urbi.it/...  albo di un altro ente
 ```
 
 Il risultato è `tabella_atti.html` (cambia nome con `--output`); PDF e log finiscono nella
 cartella di lavoro (`download_atti/`, `scraper_albo.log`).
 
-Se Ollama gira su un altro computer: `--ollama-url http://indirizzo:11434` oppure la variabile
-d'ambiente `OLLAMA_URL`.
+### Provider LLM (Omlx / Ollama)
+
+I riassunti e il diario usano il provider scelto con `--provider`:
+
+- **`omlx`** (predefinito): API OpenAI-compatibile. Server e modello predefiniti si cambiano con
+  `--omlx-url URL` / `--modello NOME` oppure con le variabili d'ambiente `OMLX_URL`,
+  `OMLX_API_KEY` e `MODELLO_OMLX`. Il testo inviato è limitato a 10000 caratteri.
+- **`ollama`**: modello locale. Server e modello si cambiano con `--ollama-url URL` / `--modello NOME`
+  oppure con `OLLAMA_URL` e `MODELLO_LOCALE`. Il testo inviato è limitato a 12000 caratteri.
+
+Esempi:
+
+```bash
+python scraper_albo.py --riassumi true                        # Omlx (predefinito)
+python scraper_albo.py --riassumi true --provider ollama      # Ollama
+python scraper_albo.py --riassumi true --provider ollama --modello gemma3:12b
+python scraper_albo.py --diario --output tabella_atti.html    # diario con il provider scelto
+```
 
 ## Memoria degli atti già elaborati
 
@@ -108,7 +187,7 @@ download, OCR o riassunto — ma restano nella tabella HTML con il riassunto sal
 Se un PDF contiene solo l'immagine dell'atto (nessun testo), prima di riassumerlo le sue pagine
 vengono lette con **Tesseract** (`--ocr true`, attivo di default). L'OCR parte solo per le pagine
 senza testo, quindi i PDF normali non rallentano, e si ferma appena c'è abbastanza testo per il
-riassunto (`MAX_CARATTERI`).
+riassunto (il limite è 10000 caratteri con Omlx e 12000 con Ollama).
 
 - Lingua: `--ocr-lingua ita` (default); per documenti misti `--ocr-lingua ita+eng`.
 - Serve Tesseract con i dati della lingua (vedi Installazione).
