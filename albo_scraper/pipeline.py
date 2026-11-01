@@ -15,14 +15,16 @@ from .config import (
     MAX_ERRORI_CONSECUTIVI,
     MAX_PAGINE_SICUREZZA,
     MODELLO_LOCALE,
+    MODELLO_OMLX,
     OCR_LINGUA,
     OLLAMA_URL,
+    OMLX_URL,
     STATO_FILE,
 )
 from .filtri import a_data, filtra_per_data, piu_recenti
 from .log import configura_logging, logger
 from .pdf import id_documento, scarica_pdf
-from .riassunti import riassumi_pdf_locale
+from .riassunti import riassumi_pdf
 from .sito import (
     apri_tabella,
     crea_contesto,
@@ -41,8 +43,9 @@ class Impostazioni:
     cartella: Path
     scarica: bool
     riassumi: bool
-    modello: str
-    ollama_url: str
+    provider: str
+    modello: str | None
+    llm_url: str | None
     ocr: bool
     ocr_lingua: str
     stato: StatoAtti
@@ -79,10 +82,11 @@ def _riassumi_documento(
 ) -> None:
     """Riassume un PDF, salva il testo in `doc`, in `atto['riassunti']` e nello stato."""
     try:
-        riassunto = riassumi_pdf_locale(
+        riassunto = riassumi_pdf(
             percorso,
+            provider=imp.provider,
             modello=imp.modello,
-            url=imp.ollama_url,
+            url=imp.llm_url,
             ocr=imp.ocr,
             lingua_ocr=imp.ocr_lingua,
         )
@@ -291,9 +295,10 @@ def stampa_link_pdf(
     al: date | str | None = None,
     campo: str = "data_inizio",
     riassumi: bool = False,
-    modello: str = MODELLO_LOCALE,
+    provider: str = "omlx",
+    modello: str | None = None,
     escludi: Iterable[str] = DESCRIZIONI_ESCLUSE,
-    ollama_url: str = OLLAMA_URL,
+    llm_url: str | None = None,
     ocr: bool = True,
     ocr_lingua: str = OCR_LINGUA,
     stato_file: str | Path | None = STATO_FILE,
@@ -308,9 +313,9 @@ def stampa_link_pdf(
     Con scarica=True salva anche i PDF in `cartella` (chiave 'file_pdf').
     Con riassumi=True (richiede scarica=True) genera un riassunto di ogni PDF
     scaricato (chiave 'riassunti': {percorso file: riassunto}).
-    I riassunti usano un LLM locale servito da Ollama: `modello` è il nome del modello
-    (come in `ollama list`) e `ollama_url` l'indirizzo del server (default: variabile
-    d'ambiente OLLAMA_URL oppure http://localhost:11434).
+    I riassunti usano il provider LLM scelto con `provider` ("omlx" oppure "ollama");
+    `modello` e `llm_url` hanno come default quelli del provider (MODELLO_OMLX/OMLX_URL
+    oppure MODELLO_LOCALE/OLLAMA_URL in config.py).
     Con ocr=True i PDF scansionati (pagine senza testo) vengono letti con Tesseract
     nella lingua `ocr_lingua` prima di essere riassunti.
     I documenti già scaricati e riassunti in precedenza sono registrati in `stato_file`
@@ -338,17 +343,26 @@ def stampa_link_pdf(
     if not logger.handlers:
         configura_logging()  # configurazione predefinita se non già fatta
 
+    if provider == "omlx":
+        modello = modello or MODELLO_OMLX
+        llm_url = llm_url or OMLX_URL
+    else:
+        modello = modello or MODELLO_LOCALE
+        llm_url = llm_url or OLLAMA_URL
+
     logger.info(
         f"Avvio: headless={headless}, scarica={scarica}, riassumi={riassumi}"
-        f"{f' (modello {modello} su {ollama_url})' if riassumi else ''}, cartella={cartella}"
+        f"{f' (provider {provider}, modello {modello} su {llm_url})' if riassumi else ''}, "
+        f"cartella={cartella}"
     )
 
     imp = Impostazioni(
         cartella=Path(cartella),
         scarica=scarica,
         riassumi=riassumi,
+        provider=provider,
         modello=modello,
-        ollama_url=ollama_url,
+        llm_url=llm_url,
         ocr=ocr,
         ocr_lingua=ocr_lingua,
         stato=StatoAtti(stato_file, ignora_stato),

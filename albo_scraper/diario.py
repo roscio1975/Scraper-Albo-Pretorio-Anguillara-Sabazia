@@ -16,17 +16,15 @@ from pathlib import Path
 from .config import (
     COLONNE_TABELLA,
     LOGHI_DIARIO,
-    MODELLO_LOCALE,
-    NUM_CTX,
     NUM_CTX_DIARIO_MAX,
-    OLLAMA_URL,
+    NUM_CTX_FALLBACK,
     PROMPT_DIARIO,
     SOTTOTITOLO_DIARIO,
     TITOLO_DIARIO,
     TITOLO_PAGINA_DIARIO,
 )
 from .log import logger
-from .ollama import chiedi_a_ollama
+from .common import chiedi_llm
 from .report import CSS_TABELLA, VUOTO, Riga, pagina_html, tabella_html
 
 FILE_DIARIO = "diario_atti.html"  # scritto nella stessa cartella del file della tabella
@@ -186,15 +184,31 @@ def _atti_che_entrano_nel_contesto(atti: list[dict]) -> list[dict]:
     return scelti
 
 
-def _genera_testo_diario(atti: list[dict], modello: str, ollama_url: str) -> str:
+def _genera_testo_diario(
+    atti: list[dict],
+    provider: str,
+    modello: str | None,
+    url: str | None,
+) -> str:
     dati = "\n".join(json.dumps(a, ensure_ascii=False) for a in atti)
     prompt = PROMPT_DIARIO.replace("{dati_atti}", dati)
 
     token_stimati = len(prompt) // CARATTERI_PER_TOKEN + TOKEN_PER_LA_RISPOSTA
-    num_ctx = min(max(NUM_CTX, token_stimati), NUM_CTX_DIARIO_MAX)
+    num_ctx = min(max(NUM_CTX_FALLBACK, token_stimati), NUM_CTX_DIARIO_MAX)
 
-    logger.info(f"Invio a Ollama ({modello}) la richiesta del diario per {len(atti)} atti...")
-    return chiedi_a_ollama(prompt, modello, ollama_url, num_ctx=num_ctx, timeout=900)
+    logger.info(
+        f"Invio a {provider} ({modello or 'modello predefinito'}) la richiesta del diario "
+        f"per {len(atti)} atti..."
+    )
+    return chiedi_llm(
+        provider,
+        prompt,
+        modello=modello,
+        url=url,
+        num_ctx=num_ctx,
+        max_tokens=2048,
+        timeout=900,
+    )
 
 
 # ----------------------------------------------------------------------- pagina HTML
@@ -257,8 +271,9 @@ def _pagina_diario(testo_diario: str, atti: list[dict]) -> str:
 # ------------------------------------------------------------------------- principale
 def crea_diario_html(
     percorso: str | Path,
-    modello: str = MODELLO_LOCALE,
-    ollama_url: str = OLLAMA_URL,
+    provider: str = "omlx",
+    modello: str | None = None,
+    url: str | None = None,
 ) -> Path | None:
     """
     Crea `diario_atti.html` (nella cartella di `percorso`) a partire dalla tabella HTML
@@ -279,9 +294,9 @@ def crea_diario_html(
     atti = _atti_che_entrano_nel_contesto(atti)
 
     try:
-        testo_diario = _genera_testo_diario(atti, modello, ollama_url)
+        testo_diario = _genera_testo_diario(atti, provider, modello, url)
     except Exception as e:
-        logger.error(f"Errore nella chiamata a Ollama per il diario: {e}")
+        logger.error(f"Errore nella chiamata al provider LLM per il diario: {e}")
         return None
 
     destinazione = percorso.with_name(FILE_DIARIO)

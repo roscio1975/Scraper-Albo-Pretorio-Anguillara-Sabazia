@@ -1,28 +1,26 @@
-"""Riassunti dei PDF con un LLM locale servito da Ollama.
-"""
+"""Riassunti dei PDF con un LLM (Omlx o Ollama)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from .common import chiedi_llm
 from .config import (
-    MAX_CARATTERI,
+    MAX_CARATTERI_FALLBACK,
+    MAX_CARATTERI_OMLX,
     MIN_CARATTERI_PAGINA,
-    MODELLO_LOCALE,
     OCR_LINGUA,
-    OLLAMA_URL,
     PROMPT_RIASSUNTO,
 )
 from .log import logger
 from .ocr import LettoreOcr
-from .ollama import chiedi_a_ollama
 
 
 def estrai_testo_pdf(
     percorso: str | Path,
     ocr: bool = True,
     lingua_ocr: str = OCR_LINGUA,
-    max_caratteri: int | None = MAX_CARATTERI,
+    max_caratteri: int | None = MAX_CARATTERI_FALLBACK,
 ) -> str:
     """
     Estrae il testo da un PDF pagina per pagina con pypdf. Le pagine senza testo
@@ -55,20 +53,33 @@ def estrai_testo_pdf(
     return "\n".join(testi).strip()
 
 
-def riassumi_pdf_locale(
+def riassumi_pdf(
     percorso: str | Path,
-    modello: str = MODELLO_LOCALE,
-    url: str = OLLAMA_URL,
+    provider: str = "omlx",
+    modello: str | None = None,
+    url: str | None = None,
     max_righe: int = 4,
     ocr: bool = True,
     lingua_ocr: str = OCR_LINGUA,
+    max_caratteri: int | None = None,
 ) -> str:
     """
-    Riassume un PDF con un LLM locale servito da Ollama.
+    Riassume un PDF con il provider scelto (`omlx` oppure `ollama`).
     Il testo viene estratto con pypdf (e con l'OCR per le pagine scansionate, se `ocr`)
-    e inviato al modello: nessun dato esce dal PC.
+    e inviato al modello.
+
+    `max_caratteri` limita il testo inviato: se non indicato vale MAX_CARATTERI_OMLX
+    (10000) con Omlx e MAX_CARATTERI_FALLBACK (12000) con Ollama.
     """
-    testo = estrai_testo_pdf(percorso, ocr=ocr, lingua_ocr=lingua_ocr)
+    provider = (provider or "omlx").strip().lower()
+    if max_caratteri is None:
+        max_caratteri = (
+            MAX_CARATTERI_OMLX if provider == "omlx" else MAX_CARATTERI_FALLBACK
+        )
+
+    testo = estrai_testo_pdf(
+        percorso, ocr=ocr, lingua_ocr=lingua_ocr, max_caratteri=max_caratteri
+    )
     if not testo:
         raise RuntimeError(
             "nessun testo trovato nemmeno con l'OCR"
@@ -77,10 +88,22 @@ def riassumi_pdf_locale(
         )
     logger.debug(
         f"Testo estratto da {Path(percorso).name}: {len(testo)} caratteri "
-        f"(inviati al massimo {MAX_CARATTERI}) - modello {modello}"
+        f"(inviati al massimo {max_caratteri}) - provider {provider}"
     )
-    testo = testo[:MAX_CARATTERI]
+    testo = testo[:max_caratteri]
 
     istruzioni = PROMPT_RIASSUNTO.format(max_righe=max_righe)
     prompt = f"{istruzioni}\n\nTESTO DELL'ATTO:\n{testo}"
-    return chiedi_a_ollama(prompt, modello, url, temperatura=0.2, timeout=300)
+    return chiedi_llm(
+        provider,
+        prompt,
+        modello=modello,
+        url=url,
+        temperatura=0.2,
+        max_tokens=512,
+        timeout=300,
+    )
+
+
+# Nome storico mantenuto per compatibilità con eventuale codice esterno.
+riassumi_pdf_locale = riassumi_pdf
