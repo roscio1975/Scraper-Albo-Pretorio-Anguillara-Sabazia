@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from .config import NUM_CTX, OLLAMA_URL
+from .config import NUM_CTX_FALLBACK, OLLAMA_URL
 from .log import logger
 
 
@@ -13,7 +13,7 @@ def chiedi_a_ollama(
     prompt: str,
     modello: str,
     url: str = OLLAMA_URL,
-    num_ctx: int = NUM_CTX,
+    num_ctx: int = NUM_CTX_FALLBACK,
     temperatura: float | None = None,
     timeout: int = 300,
 ) -> str:

@@ -66,7 +66,7 @@ FORMATO_LOG = "%(asctime)s | %(levelname)-5s | %(message)s"
 FORMATO_DATA = "%Y-%m-%d %H:%M:%S"
 
 
-# --- Riassunti con LLM locale (Ollama)
+# --- Riassunti con LLM (Omlx preferito, Ollama come alternativa)
 PROMPT_RIASSUNTO = (
     "Riassumi in italiano, in al massimo {max_righe} righe, il contenuto di questo "
     "atto amministrativo. Indica l'oggetto, i soggetti coinvolti e, se presenti, "
@@ -74,12 +74,18 @@ PROMPT_RIASSUNTO = (
     "Rispondi solo con il riassunto, senza introduzioni."
 )
 
-# Indirizzo di Ollama: variabile d'ambiente OLLAMA_URL (utile se gira su un altro
-# computer) oppure locale.
+# Configurazione Omlx (API OpenAI-compatibile)
+OMLX_API_KEY = os.environ.get("OMLX_API_KEY", "sk-omlx-2pfBvnfGb9KeE2h2caxtFGL5")
+OMLX_URL = os.environ.get("OMLX_URL", "http://127.0.0.1:8000/v1")
+MODELLO_OMLX = os.environ.get("MODELLO_OMLX", "Qwen3.5-9B-MLX-4bit")
+MAX_CARATTERI_OMLX = 10_000  # testo massimo inviato al modello con --provider omlx
+NUM_CTX_OMLX = 12_000  # solo documentazione: l'API OpenAI-compatibile non usa num_ctx
+
+# Configurazione Ollama (alternativa locale)
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-MODELLO_LOCALE = "llama3.1:8b"  # un modello già scaricato: controlla con `ollama list`
-MAX_CARATTERI = 12_000  # testo massimo inviato al modello (evita di sforare il contesto)
-NUM_CTX = 8192  # finestra di contesto richiesta a Ollama per i riassunti
+MODELLO_LOCALE = os.environ.get("MODELLO_LOCALE", "llama3.1:8b")
+MAX_CARATTERI_FALLBACK = 12_000  # testo massimo inviato al modello con --provider ollama
+NUM_CTX_FALLBACK = 12_000  # finestra di contesto richiesta a Ollama per i riassunti
 
 
 # --- OCR per i PDF scansionati (Tesseract)
