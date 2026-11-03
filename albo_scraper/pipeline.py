@@ -22,7 +22,7 @@ from .config import (
     STATO_FILE,
 )
 from .filtri import a_data, filtra_per_data, piu_recenti
-from .log import configura_logging, logger
+from .log import configura_logging, logger, url_sicuro
 from .pdf import id_documento, scarica_pdf
 from .riassunti import riassumi_pdf
 from .sito import (
@@ -175,7 +175,7 @@ def _elabora_atto(
 
     logger.info(f"Atto: {atto['testo_atto'][:80]}")
     for doc in atto["link_pdf"]:
-        logger.info(f"   [{doc['descrizione']}] {doc['url']}")
+        logger.info(f"   [{doc['descrizione']}] {url_sicuro(doc['url'])}")
 
     if imp.scarica:
         _scarica_documenti(context, atto, imp)

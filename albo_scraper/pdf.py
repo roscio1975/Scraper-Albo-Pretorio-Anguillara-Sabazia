@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from playwright.sync_api import BrowserContext
 
-from .log import logger
+from .log import logger, url_sicuro
 
 
 def nome_file_sicuro(testo: str, max_len: int = 150) -> str:
@@ -81,15 +81,15 @@ def scarica_pdf(
         logger.info(f"   già presente in locale, download saltato: {esistente}")
         return esistente
 
-    logger.debug(f"GET {url}")
+    logger.debug(f"GET {url_sicuro(url)}")
     risposta = context.request.get(url, timeout=60_000)
     if not risposta.ok:
-        logger.error(f"Download fallito (HTTP {risposta.status}): {url}")
+        logger.error(f"Download fallito (HTTP {risposta.status}): {url_sicuro(url)}")
         return None
 
     contenuto = risposta.body()
     if b"%PDF" not in contenuto[:1024]:
-        logger.error(f"Il contenuto scaricato non è un PDF: {url}")
+        logger.error(f"Il contenuto scaricato non è un PDF: {url_sicuro(url)}")
         return None
 
     base = nome_file_sicuro(testo_atto, 120)
