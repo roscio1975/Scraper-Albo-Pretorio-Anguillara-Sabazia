@@ -24,7 +24,7 @@ from .config import (
     USER_AGENT,
 )
 from .filtri import parse_data
-from .log import logger
+from .log import logger, url_sicuro
 
 
 def crea_contesto(playwright: Playwright, headless: bool) -> tuple[Browser, BrowserContext]:
@@ -40,7 +40,7 @@ def crea_contesto(playwright: Playwright, headless: bool) -> tuple[Browser, Brow
 def apri_tabella(page: Page, url: str | None = None) -> None:
     """Apre il sito (`url`, di default quello in config.py), clicca 'Avanti' e attende la tabella."""
     url = url or config.URL
-    logger.info(f"Apertura del sito: {url}")
+    logger.info(f"Apertura del sito: {url_sicuro(url)}")
     page.goto(url, wait_until="domcontentloaded")
 
     avanti = page.get_by_role("button", name="Avanti")
@@ -230,7 +230,7 @@ def ottieni_link_pdf_atto(
         )
         contenuto_busta = [h for h in hrefs if "P7M=S" in h]
         for url in contenuto_busta or hrefs:
-            logger.debug(f"[riga {indice_riga}] allegato '{descrizione}': {url}")
+            logger.debug(f"[riga {indice_riga}] allegato '{descrizione}': {url_sicuro(url)}")
             risultati.append({"descrizione": descrizione, "url": url})
 
     chiudi_modale(page, modale)
@@ -285,7 +285,7 @@ def _diagnostica_cambio_pagina(page: Page, prima: str, pagina_corrente: int) -> 
     try:
         stato = page.evaluate("() => ({url: location.href, pronta: document.readyState})")
         dettaglio = (
-            f"URL={stato['url']}, readyState={stato['pronta']}, "
+            f"URL={url_sicuro(stato['url'])}, readyState={stato['pronta']}, "
             f"righe nella tabella degli atti={page.locator(f'{TABELLA_ATTI} tbody tr').count()}, "
             f"tabelle nella pagina={page.locator('table').count()}, "
             f"contenuto uguale a prima={_firma_tabella(page) == prima}, "

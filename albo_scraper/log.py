@@ -4,11 +4,25 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from .config import FORMATO_DATA, FORMATO_LOG, LOG_FILE
 
 
 logger = logging.getLogger("scraper_albo")
+
+# Parametri di URL che contengono token/sessioni: nei log vanno oscurati, perché i file
+# di log vengono condivisi (bug report, issue) e i token non devono uscire dal browser.
+_RE_TOKEN_URL = re.compile(
+    r"([?&;](?:FNSTR|SESSION|SESSIONID|JSESSIONID|PHPSESSID|SID|TOKEN|API_KEY|PASSWORD)=)"
+    r"[^&\s#]+",
+    re.IGNORECASE,
+)
+
+
+def url_sicuro(url: str) -> str:
+    """URL con i parametri di sessione/token sostituiti da `***`, da usare nei log."""
+    return _RE_TOKEN_URL.sub(r"\1***", url)
 
 
 class _FormatoConsole(logging.Formatter):
