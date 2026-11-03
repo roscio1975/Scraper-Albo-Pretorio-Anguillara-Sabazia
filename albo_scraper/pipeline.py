@@ -49,7 +49,7 @@ class Impostazioni:
     ocr: bool
     ocr_lingua: str
     stato: StatoAtti
-    escludi: Iterable[str]
+    escludi: tuple[str, ...]
     # selezione degli atti
     dal: date | str | None
     al: date | str | None
@@ -115,8 +115,11 @@ def _scarica_documenti(context: BrowserContext, atto: dict, imp: Impostazioni) -
         id_doc = id_documento(doc["url"])
         voce = imp.stato.get(id_doc) or {}
 
-        # Già fatto tutto ciò che serve: né download, né OCR, né riassunto
-        if voce.get("file") and (voce.get("riassunto") or not imp.riassumi):
+        # Già fatto tutto ciò che serve: né download, né OCR, né riassunto.
+        # Il file deve essere ancora presente su disco: se è stato cancellato
+        # (o spostato) il documento va riscaricato.
+        file_presente = bool(voce.get("file")) and Path(voce["file"]).exists()
+        if file_presente and (voce.get("riassunto") or not imp.riassumi):
             logger.info(f"   già elaborato in precedenza, salto: [{doc['descrizione']}] {id_doc}")
             _riporta_dallo_stato(atto, doc, voce)
             continue
@@ -355,6 +358,10 @@ def stampa_link_pdf(
         f"{f' (provider {provider}, modello {modello} su {llm_url})' if riassumi else ''}, "
         f"cartella={cartella}"
     )
+
+    # Materializza subito l'iterabile: se fosse un generatore verrebbe consumato dal
+    # primo atto e gli atti successivi non avrebbero più esclusioni.
+    escludi = tuple(escludi)
 
     imp = Impostazioni(
         cartella=Path(cartella),
