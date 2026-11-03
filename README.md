@@ -15,8 +15,9 @@ python -m pip install -r requirements.txt
 playwright install chromium               # una volta sola
 brew install tesseract tesseract-lang     # OCR dei PDF scansionati (macOS)
 # riassunti: Omlx (predefinito) oppure Ollama
-#   Omlx: server attivo su OMLX_URL (default http://127.0.0.1:8000/v1)
-#   Ollama: ollama pull <modello> e Ollama attivo
+#   Omlx: server attivo su OMLX_URL (default http://127.0.0.1:8000/v1) e chiave in
+#         OMLX_API_KEY (obbligatoria, mai nel codice): export OMLX_API_KEY="..."
+#   Ollama: ollama pull <modello> e Ollama attivo (nessuna chiave)
 ```
 
 Su Debian/Ubuntu al posto di brew: `apt install tesseract-ocr tesseract-ocr-ita`.
@@ -154,8 +155,17 @@ I riassunti e il diario usano il provider scelto con `--provider`:
 - **`omlx`** (predefinito): API OpenAI-compatibile. Server e modello predefiniti si cambiano con
   `--omlx-url URL` / `--modello NOME` oppure con le variabili d'ambiente `OMLX_URL`,
   `OMLX_API_KEY` e `MODELLO_OMLX`. Il testo inviato è limitato a 10000 caratteri.
+  `OMLX_API_KEY` è **obbligatoria** e non va mai scritta nel codice né in un file versionato:
+
+  ```bash
+  export OMLX_API_KEY="la-tua-chiave"   # da rifare in ogni nuovo terminale
+  ```
+
+  Senza chiave il provider `omlx` si ferma con un messaggio esplicito, senza inviare
+  richieste.
 - **`ollama`**: modello locale. Server e modello si cambiano con `--ollama-url URL` / `--modello NOME`
   oppure con `OLLAMA_URL` e `MODELLO_LOCALE`. Il testo inviato è limitato a 12000 caratteri.
+  Non richiede chiavi.
 
 Esempi:
 
@@ -200,7 +210,11 @@ Attivando l'opzione --invia-mail, lo script invierà automaticamente il file HTM
 
 **Configurazione:**
 
-Destinatari: Crea un file chiamato receipts.txt nella cartella principale del progetto. Ogni riga deve contenere un indirizzo email valido (es. utente@esempio.it).
-Server SMTP: Il software utilizza un server SMTP per l'invio. Assicurati di configurare correttamente le credenziali (server, porta, utente e password) nel codice o nelle variabili d'ambiente.
+Destinatari: Crea un file chiamato receipts.txt nella cartella principale del progetto. Ogni riga deve contenere un indirizzo email valido (es. utente@esempio.it). Il file è escluso da git (`.gitignore`).
+Server SMTP: Il software utilizza un server SMTP per l'invio. Server, porta, utente e mittente si impostano in `config.py`; la password va **solo** nella variabile d'ambiente `SMTP_PASSWORD` (mai nel codice):
+
+```bash
+export SMTP_PASSWORD="la-password-o-app-password"
+```
 Sicurezza: Se utilizzi servizi come Gmail o Outlook, è necessario generare una Password per le App (App Password) per consentire all'applicazione di inviare email.
 

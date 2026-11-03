@@ -75,7 +75,13 @@ PROMPT_RIASSUNTO = (
 )
 
 # Configurazione Omlx (API OpenAI-compatibile)
-OMLX_API_KEY = os.environ.get("OMLX_API_KEY", "***REMOVED***")
+# La chiave NON va scritta nel codice: finirebbe nella history di git e, su un
+# repository pubblico, sarebbe leggibile da chiunque. Va impostata nell'ambiente
+# prima di avviare:
+#   export OMLX_API_KEY="..."
+# Senza chiave il provider omlx si rifiuta di partire (vedi omlx.py); in
+# alternativa si può usare --provider ollama, che non richiede credenziali.
+OMLX_API_KEY = os.environ.get("OMLX_API_KEY", "")
 OMLX_URL = os.environ.get("OMLX_URL", "http://127.0.0.1:8000/v1")
 MODELLO_OMLX = os.environ.get("MODELLO_OMLX", "Qwen3.5-9B-MLX-4bit")
 MAX_CARATTERI_OMLX = 10_000  # testo massimo inviato al modello con --provider omlx

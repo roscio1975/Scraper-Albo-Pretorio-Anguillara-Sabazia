@@ -46,7 +46,12 @@ def chiedi_a_omlx(
     Solleva un'eccezione se la chiamata non riesce (timeout, errori HTTP, ecc.).
     """
     if not OMLX_API_KEY:
-        raise ValueError("La variabile d'ambiente OMLX_API_KEY è obbligatoria.")
+        raise ValueError(
+            "La variabile d'ambiente OMLX_API_KEY è obbligatoria per usare "
+            "--provider omlx.\n"
+            'Impostala prima di avviare: export OMLX_API_KEY="..."\n'
+            "In alternativa usa --provider ollama (modello locale, nessuna chiave)."
+        )
 
     body: dict = {
         "model": modello,

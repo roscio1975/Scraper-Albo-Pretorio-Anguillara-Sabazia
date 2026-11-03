@@ -1,17 +1,21 @@
 # Ignore OS-generated files
 .DS_Store
 .vscode/
-#Ignore venv
+# Ignore venv
 venv/
-albo_scraper/__pycache__/
+.venv/
 __pycache__/
-#ignore file generati
+albo_scraper/__pycache__/
+# Segreti: mai versionare chiavi o password (OMLX_API_KEY, SMTP_PASSWORD...)
+.env
+.env.*
+# Ignore file generati
 risultati/
 download_atti/
 scraper_albo.log
 atti_processati.json
 receipts.txt
 diario_atti.txt
-#debug files
+# Ignore debug files
 debug*
 
