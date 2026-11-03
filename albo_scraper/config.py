@@ -83,7 +83,7 @@ PROMPT_RIASSUNTO = (
 # alternativa si può usare --provider ollama, che non richiede credenziali.
 OMLX_API_KEY = os.environ.get("OMLX_API_KEY", "")
 OMLX_URL = os.environ.get("OMLX_URL", "http://127.0.0.1:8000/v1")
-MODELLO_OMLX = os.environ.get("MODELLO_OMLX", "Qwen3.5-9B-MLX-4bit")
+MODELLO_OMLX = os.environ.get("MODELLO_OMLX", "Spark-X2.5-4B-MLX-8bit")
 MAX_CARATTERI_OMLX = 10_000  # testo massimo inviato al modello con --provider omlx
 NUM_CTX_OMLX = 12_000  # solo documentazione: l'API OpenAI-compatibile non usa num_ctx
 
