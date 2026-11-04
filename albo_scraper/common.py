@@ -52,6 +52,7 @@ def chiedi_llm(
       MODELLO_LOCALE e OLLAMA_URL. `max_caratteri`/`max_tokens` sono ignorati
       (il testo viene già troncato prima della chiamata).
 
+    `num_ctx` riguarda solo Ollama (Omlx lo ignora).
     `timeout` ha un default diverso per provider (Omlx 120s, Ollama 300s).
     """
     provider = normalizza_provider(provider)
@@ -61,7 +62,6 @@ def chiedi_llm(
             prompt,
             modello=modello or MODELLO_OMLX,
             url=url or OMLX_URL,
-            num_ctx=num_ctx,
             temperatura=temperatura,
             max_caratteri=max_caratteri,
             max_tokens=max_tokens,

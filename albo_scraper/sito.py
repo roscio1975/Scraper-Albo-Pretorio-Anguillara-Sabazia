@@ -110,10 +110,22 @@ def apri_tabella(page: Page, url: str | None = None) -> None:
     avanti = page.get_by_role("button", name="Avanti")
     if avanti.count() == 0:
         avanti = page.locator("a:has-text('Avanti'), input[value='Avanti']")
-    logger.debug("Clic su 'Avanti'")
-    avanti.first.click()
+    if avanti.count():
+        logger.debug("Clic su 'Avanti'")
+        avanti.first.click()
+    else:
+        # Su alcune versioni del sito la tabella è già visibile e il pulsante non c'è:
+        # si prova comunque ad aspettare la tabella invece di fallire subito.
+        logger.warning("Pulsante 'Avanti' non trovato: proseguo se la tabella è già visibile")
 
-    page.wait_for_selector(f"{TABELLA_ATTI} tbody tr", timeout=30_000)
+    try:
+        page.wait_for_selector(f"{TABELLA_ATTI} tbody tr", timeout=30_000)
+    except PlaywrightTimeout:
+        raise RuntimeError(
+            f"La tabella degli atti non è comparsa ({url_sicuro(url)}): il pulsante 'Avanti' "
+            "potrebbe non essere più quello atteso. Lancia con --debug true per salvare "
+            "l'HTML e lo screenshot della pagina."
+        ) from None
     logger.debug("Tabella degli atti caricata")
 
 
@@ -130,13 +142,25 @@ def parse_tabella(page: Page) -> list[dict]:
     risultati = []
     for riga in righe:
         m = RE_DATE.search(riga["testo_cella"] or "")
+        date_lette = m.group(0) if m else "nessuna data"
+        try:
+            data_inizio = parse_data(m.group(1)) if m else None
+            data_fine = parse_data(m.group(2)) if m else None
+        except ValueError:
+            # Una data formalmente presente ma impossibile (es. 32-13-2026) non deve
+            # far fallire la lettura di tutta la pagina: l'atto resta, senza date.
+            logger.warning(
+                f"Riga {riga['indice']}: date non valide ({date_lette!r}), "
+                "l'atto viene letto senza date"
+            )
+            data_inizio = data_fine = None
         risultati.append(
             {
                 "ente_mittente": riga["ente_mittente"],
                 "tipologia_atto": riga["tipologia_atto"],
                 "testo_atto": riga["testo_atto"],
-                "data_inizio": parse_data(m.group(1)) if m else None,
-                "data_fine": parse_data(m.group(2)) if m else None,
+                "data_inizio": data_inizio,
+                "data_fine": data_fine,
                 "indice_riga": riga["indice"],  # posizione nella tabella, per aprire la modale
             }
         )
@@ -173,7 +197,7 @@ def _selettore_modale_dichiarato(pulsante: Locator) -> str | None:
 
 
 def _diagnostica_modale(
-    page: Page, indice_riga: int, dichiarato: str | None, pulsante: Locator
+    page: Page, indice_riga: int, dichiarato: str | None
 ) -> None:
     """Modale non comparsa: registra cosa si vede e salva HTML e screenshot della pagina."""
     try:
@@ -221,7 +245,7 @@ def apri_modale(page: Page, indice_riga: int) -> Locator:
     try:
         page.locator(candidati).first.wait_for(state="visible", timeout=ATTESA_MODALE_MS)
     except PlaywrightTimeout:
-        _diagnostica_modale(page, indice_riga, dichiarato, pulsante)
+        _diagnostica_modale(page, indice_riga, dichiarato)
         raise
 
     if dichiarato and page.locator(dichiarato).first.is_visible():
