@@ -4,9 +4,16 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import re
 
-from .config import FORMATO_DATA, FORMATO_LOG, LOG_FILE
+from .config import (
+    FORMATO_DATA,
+    FORMATO_LOG,
+    LOG_BACKUP_COUNT,
+    LOG_FILE,
+    LOG_MAX_BYTES,
+)
 
 
 logger = logging.getLogger("scraper_albo")
@@ -47,7 +54,8 @@ def configura_logging(
     """
     Configura il logging (timestamp + livello) su file e/o console.
     - su_file=True: scrive su `file_log` (in append) i messaggi da `livello_file`
-      in su, con i traceback degli errori.
+      in su, con i traceback degli errori. Il file viene ruotato quando supera
+      LOG_MAX_BYTES, conservando LOG_BACKUP_COUNT copie.
     - console=True: scrive sulla console i messaggi da `livello_console` in su
       (senza traceback se si registra anche su file).
     """
@@ -59,7 +67,12 @@ def configura_logging(
     logger.propagate = False
 
     if su_file:
-        handler_file = logging.FileHandler(file_log, encoding="utf-8")
+        handler_file = logging.handlers.RotatingFileHandler(
+            file_log,
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        )
         handler_file.setLevel(livello_file)
         handler_file.setFormatter(logging.Formatter(FORMATO_LOG, FORMATO_DATA))
         logger.addHandler(handler_file)

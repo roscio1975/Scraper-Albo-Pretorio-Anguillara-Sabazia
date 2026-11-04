@@ -393,4 +393,9 @@ def stampa_link_pdf(
             logger.error("Errore durante lo scraping", exc_info=True)
             raise
         finally:
-            browser.close()
+            # Lo stato è scritto a batch: qui si salva comunque quanto accumulato,
+            # anche se lo scraping si interrompe (errore o Ctrl-C).
+            try:
+                imp.stato.salva()
+            finally:
+                browser.close()

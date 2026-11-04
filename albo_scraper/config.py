@@ -64,6 +64,8 @@ ATTESA_CAMBIO_PAGINA_MS = 60_000  # attesa massima perché la tabella cambi dopo
 LOG_FILE = "scraper_albo.log"
 FORMATO_LOG = "%(asctime)s | %(levelname)-5s | %(message)s"
 FORMATO_DATA = "%Y-%m-%d %H:%M:%S"
+LOG_MAX_BYTES = 5_000_000  # oltre questa dimensione il file di log viene ruotato
+LOG_BACKUP_COUNT = 3  # copie conservate: scraper_albo.log.1 ... scraper_albo.log.3
 
 
 # --- Riassunti con LLM (Omlx preferito, Ollama come alternativa)

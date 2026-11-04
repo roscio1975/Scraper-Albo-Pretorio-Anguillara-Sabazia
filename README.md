@@ -146,7 +146,9 @@ esempi:
 ```
 
 Il risultato è `tabella_atti.html` (cambia nome con `--output`); PDF e log finiscono nella
-cartella di lavoro (`download_atti/`, `scraper_albo.log`).
+cartella di lavoro (`download_atti/`, `scraper_albo.log`). Il file di log viene ruotato quando
+supera 5 MB e vengono conservate al massimo 3 copie (`scraper_albo.log.1`, `.2`, `.3`), così
+non cresce all'infinito tra un'esecuzione e l'altra.
 
 ### Provider LLM (Omlx / Ollama)
 
@@ -182,7 +184,9 @@ Ogni documento scaricato e riassunto viene registrato in `stato_atti.json` (nell
 lavoro). Alle esecuzioni successive i documenti già fatti vengono saltati del tutto — niente
 download, OCR o riassunto — ma restano nella tabella HTML con il riassunto salvato.
 
-- Il file viene aggiornato dopo ogni documento: se interrompi lo script non perdi il lavoro fatto.
+- Il file viene riscritto ogni pochi documenti (5 per default) e comunque alla fine
+  dell'esecuzione, anche se viene interrotta con un errore o Ctrl-C: puoi perdere al massimo
+  gli ultimi aggiornamenti del blocco in corso, non tutto il lavoro fatto.
 - Se in un atto compare un **nuovo allegato** viene elaborato solo quello (la modale di ogni atto
   viene comunque aperta per accorgersene). Una nuova versione di un documento conta come nuova.
 - `--ignora-stato true` rifà tutto (utile per confrontare un altro modello con `--modello`);
