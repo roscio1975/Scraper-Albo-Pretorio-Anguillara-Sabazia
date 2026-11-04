@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -246,6 +247,23 @@ def _normalizza(testo: str) -> str:
     return " ".join(testo.split()).casefold()
 
 
+def _pattern_esclusi(escludi: Iterable[str]) -> list[tuple[str, re.Pattern[str]]]:
+    """
+    Traduce le voci di `escludi` in espressioni regolari da confrontare con la
+    descrizione normalizzata di un allegato. `*` è un jolly: "*matrimonio*" esclude
+    ogni descrizione che contiene la parola, "VISTO*" quelle che iniziano con "VISTO".
+    Senza `*` il confronto è esatto. Maiuscole/minuscole e spazi multipli sono ignorati.
+    """
+    pattern: list[tuple[str, re.Pattern[str]]] = []
+    for voce in escludi:
+        normalizzata = _normalizza(voce)
+        if not normalizzata:
+            continue
+        parti = (re.escape(parte) for parte in normalizzata.split("*"))
+        pattern.append((voce.strip(), re.compile(".*".join(parti))))
+    return pattern
+
+
 def ottieni_link_pdf_atto(
     page: Page,
     indice_riga: int,
@@ -258,9 +276,11 @@ def ottieni_link_pdf_atto(
     Per ogni allegato la modale mostra tre badge: P7M (busta firmata),
     FILE (documento contenuto nella busta = PDF) e FIRMA (dettagli della firma).
     Si prende "FILE" (URL con P7M=S); se manca, si usano gli altri link fecore02.
+    Le voci di `escludi` sono confrontate con la descrizione dell'allegato ignorando
+    maiuscole/minuscole e spazi; `*` vale come jolly (vedi `_pattern_esclusi`).
     """
     risultati: list[dict] = []
-    escluse = {_normalizza(d) for d in escludi}
+    escluse = _pattern_esclusi(escludi)
 
     modale = apri_modale(page, indice_riga)
 
@@ -276,9 +296,15 @@ def ottieni_link_pdf_atto(
         riga = righe.nth(j)
         descrizione = (riga.locator("td").first.text_content() or "").strip()
 
-        if _normalizza(descrizione) in escluse:
+        descrizione_normalizzata = _normalizza(descrizione)
+        esclusa_da = next(
+            (voce for voce, pattern in escluse if pattern.fullmatch(descrizione_normalizzata)),
+            None,
+        )
+        if esclusa_da is not None:
             logger.debug(
-                f"[riga {indice_riga}] allegato escluso: '{' '.join(descrizione.split())}'"
+                f"[riga {indice_riga}] allegato escluso da {esclusa_da!r}: "
+                f"'{' '.join(descrizione.split())}'"
             )
             continue
 

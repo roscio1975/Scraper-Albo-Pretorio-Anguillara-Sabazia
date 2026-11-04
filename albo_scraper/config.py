@@ -18,7 +18,8 @@ TABELLA_ATTI = "table:has(th:has-text('Atti pubblicati')):not(.modal *)"
 
 # Allegati da escludere (colonna "Descrizione" della modale): non vengono né
 # scaricati né riassunti né inseriti nella tabella. Il confronto ignora maiuscole,
-# minuscole e spazi multipli. Altre descrizioni si aggiungono con --escludi.
+# minuscole e spazi multipli; `*` è un jolly ("*matrimonio*" esclude ogni descrizione
+# che contiene la parola). Altre descrizioni si aggiungono con --escludi.
 DESCRIZIONI_ESCLUSE = ("VISTO CONTABILE PER LIQUIDAZIONI",)
 
 USER_AGENT = (
