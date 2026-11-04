@@ -37,7 +37,7 @@ usage: scraper_albo.py [-h] [--livello-log {debug,info,error}]
                        [--ignora-stato [true|false]] [--ocr [true|false]]
                        [--ocr-lingua LINGUA] [--ollama-url URL]
                        [--omlx-url URL] [--invia-mail [true|false]]
-                       [--escludi DESCRIZIONE] [--diario [true|false]]
+                       [--escludi DESCRIZIONE|PATTERN] [--diario [true|false]]
 
 Scraper dell'albo pretorio: legge gli atti, ricava i link dei PDF,
 li scarica e (opzionale) li riassume con un LLM (Omlx oppure Ollama).
@@ -112,10 +112,12 @@ altre opzioni:
                         invia una mail con la tabella finale in allegato
                         (destinatari in receipts.txt, password SMTP nella
                         variabile d'ambiente SMTP_PASSWORD) (default: True)
-  --escludi DESCRIZIONE
+  --escludi DESCRIZIONE|PATTERN
                         descrizione di un allegato da escludere, come appare
-                        nella modale (si può ripetere); si aggiunge a quelle
-                        già escluse: VISTO CONTABILE PER LIQUIDAZIONI
+                        nella modale (si può ripetere); il confronto ignora
+                        maiuscole/minuscole e spazi e `*` vale come jolly
+                        (es. "*matrimonio*"); si aggiunge a quelle già
+                        escluse: VISTO CONTABILE PER LIQUIDAZIONI
                         (default: None)
   --diario [true|false]
                         non fa scraping: crea un diario in linguaggio semplice
@@ -137,6 +139,8 @@ esempi:
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
+  python scraper_albo.py --escludi "*matrimonio*"         esclude ogni allegato che contiene
+                                                          "matrimonio" (maiuscole ignorate)
   python scraper_albo.py --invia-mail false               non invia la tabella per mail
   python scraper_albo.py --output risultati.html          nome del file HTML con la tabella finale
   python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto

@@ -325,8 +325,10 @@ def stampa_link_pdf(
     I documenti già scaricati e riassunti in precedenza sono registrati in `stato_file`
     (JSON) e non vengono rifatti; `stato_file=None` disattiva la memoria e
     `ignora_stato=True` rifà tutto ma aggiorna comunque il file.
-    Gli allegati con una delle descrizioni in `escludi` (vedi DESCRIZIONI_ESCLUSE) non
-    vengono scaricati, riassunti né inseriti nei risultati.
+    Gli allegati con una descrizione che corrisponde a una voce di `escludi` (vedi
+    DESCRIZIONI_ESCLUSE) non vengono scaricati, riassunti né inseriti nei risultati.
+    Il confronto ignora maiuscole/minuscole e spazi; in ogni voce `*` è un jolly
+    (es. "*matrimonio*" esclude ogni descrizione che contiene la parola).
 
     Selezione degli atti (la tabella va dal più recente al più vecchio):
     - dal/al/campo filtrano per data (vedi filtra_per_data);

@@ -79,6 +79,8 @@ esempi:
                                                           riassunti con un modello Ollama a scelta
   python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"
                                                           esclude anche questo tipo di allegato
+  python scraper_albo.py --escludi "*matrimonio*"         esclude ogni allegato che contiene
+                                                          "matrimonio" (maiuscole ignorate)
   python scraper_albo.py --invia-mail false               non invia la tabella per mail
   python scraper_albo.py --output risultati.html          nome del file HTML con la tabella finale
   python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto
@@ -202,9 +204,10 @@ def _crea_parser() -> argparse.ArgumentParser:
         "password SMTP nella variabile d'ambiente SMTP_PASSWORD)", **bool_kw,
     )
     altre.add_argument(
-        "--escludi", action="append", metavar="DESCRIZIONE",
+        "--escludi", action="append", metavar="DESCRIZIONE|PATTERN",
         help="descrizione di un allegato da escludere, come appare nella modale "
-        "(si può ripetere); si aggiunge a quelle già escluse: "
+        "(si può ripetere); il confronto ignora maiuscole/minuscole e spazi e `*` vale "
+        "come jolly (es. \"*matrimonio*\"); si aggiunge a quelle già escluse: "
         + ", ".join(DESCRIZIONI_ESCLUSE),
     )
 
