@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .common import chiedi_llm
+from .common import chiedi_llm, normalizza_provider
 from .config import (
     MAX_CARATTERI_FALLBACK,
     MAX_CARATTERI_OMLX,
@@ -71,7 +71,7 @@ def riassumi_pdf(
     `max_caratteri` limita il testo inviato: se non indicato vale MAX_CARATTERI_OMLX
     (10000) con Omlx e MAX_CARATTERI_FALLBACK (12000) con Ollama.
     """
-    provider = (provider or "omlx").strip().lower()
+    provider = normalizza_provider(provider)
     if max_caratteri is None:
         max_caratteri = (
             MAX_CARATTERI_OMLX if provider == "omlx" else MAX_CARATTERI_FALLBACK

@@ -15,17 +15,24 @@ from .omlx import chiedi_a_omlx
 PROVIDER_VALIDI = ("omlx", "ollama")
 
 
-def _normalizza_provider(provider: str | None) -> str:
+def normalizza_provider(provider: str | None) -> str:
+    """
+    Restituisce il nome del provider in forma canonica ("omlx" oppure "ollama").
+
+    `None` e le stringhe vuote valgono "omlx" (provider predefinito); spazi e
+    maiuscole vengono ignorati. Solleva ValueError per un provider sconosciuto.
+    """
     valore = (provider or "omlx").strip().lower()
     if valore not in PROVIDER_VALIDI:
         raise ValueError(
-            f"provider non riconosciuto: {provider!r} (usa 'omlx' oppure 'ollama')"
+            f"provider non riconosciuto: {provider!r} "
+            f"(usa {' oppure '.join(repr(p) for p in PROVIDER_VALIDI)})"
         )
     return valore
 
 
 def chiedi_llm(
-    provider: str,
+    provider: str | None,
     prompt: str,
     *,
     modello: str | None = None,
@@ -47,7 +54,7 @@ def chiedi_llm(
 
     `timeout` ha un default diverso per provider (Omlx 120s, Ollama 300s).
     """
-    provider = _normalizza_provider(provider)
+    provider = normalizza_provider(provider)
 
     if provider == "omlx":
         return chiedi_a_omlx(

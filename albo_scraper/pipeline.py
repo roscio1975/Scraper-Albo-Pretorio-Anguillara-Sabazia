@@ -10,6 +10,7 @@ from pathlib import Path
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 
+from .common import normalizza_provider
 from .config import (
     DESCRIZIONI_ESCLUSE,
     MAX_ERRORI_CONSECUTIVI,
@@ -346,6 +347,7 @@ def stampa_link_pdf(
     if not logger.handlers:
         configura_logging()  # configurazione predefinita se non già fatta
 
+    provider = normalizza_provider(provider)
     if provider == "omlx":
         modello = modello or MODELLO_OMLX
         llm_url = llm_url or OMLX_URL
