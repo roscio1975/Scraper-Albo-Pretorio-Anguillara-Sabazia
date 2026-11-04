@@ -296,5 +296,6 @@ def main(argv: list[str] | None = None) -> None:
 
     percorso = scrivi_tabella(atti, args.output)
     logger.info(f"Tabella scritta in {percorso} ({len(atti)} atti)")
-    if args.invia_mail:
-        invia_report(Path(percorso))
+    if args.invia_mail and not invia_report(Path(percorso)):
+        # Il motivo è nel log; il codice di uscita serve a script e cron.
+        raise SystemExit(1)
