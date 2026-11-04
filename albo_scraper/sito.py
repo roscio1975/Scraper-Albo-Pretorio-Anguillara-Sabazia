@@ -26,6 +26,69 @@ from .config import (
 from .filtri import parse_data
 from .log import logger, url_sicuro
 
+# JS iniettato nella pagina: i pseudo-selettori di Playwright (:has-text) non esistono
+# in document.querySelectorAll, quindi la tabella degli atti va riconosciuta a mano,
+# con gli stessi criteri di TABELLA_ATTI (colonna "Atti pubblicati", fuori dalla modale).
+_JS_TROVA_TABELLA = """
+    const trovaTabella = () =>
+      [...document.querySelectorAll('table')].find(
+        (t) =>
+          !t.closest('.modal') &&
+          [...t.querySelectorAll('th')].some((th) =>
+            th.textContent.toLowerCase().includes('atti pubblicati')
+          )
+      );
+"""
+
+_JS_RIGHE_TABELLA = (
+    "() => {"
+    + _JS_TROVA_TABELLA
+    + """
+    const tabella = trovaTabella();
+    if (!tabella) return [];
+    const risultati = [];
+    [...tabella.querySelectorAll('tbody tr')].forEach((tr, indice) => {
+      const celle = tr.querySelectorAll('td');
+      if (celle.length < 2) return;
+      const cella = celle[1];  // colonna "Atti pubblicati"
+      const strong = cella.querySelectorAll('strong');
+      const testo = (el) => (el ? el.textContent.trim() : '');
+      risultati.push({
+        indice,
+        ente_mittente: testo(strong[0]),
+        tipologia_atto: testo(strong[1]),
+        testo_atto: testo(strong[2]),
+        testo_cella: cella.textContent,
+      });
+    });
+    return risultati;
+    }"""
+)
+
+# `arg` è la firma della tabella prima del clic. Restituisce true solo quando la firma
+# è diversa e resta uguale per due controlli consecutivi (500 ms con polling 250 ms).
+_JS_TABELLA_CAMBIATA = (
+    "(prima) => {"
+    + _JS_TROVA_TABELLA
+    + """
+    const tabella = trovaTabella();
+    const corpo = tabella && tabella.querySelector('tbody');
+    const firma = corpo ? corpo.innerText : '';
+    if (!firma || firma === prima) {
+      window.__alboFirmaPrecedente = null;
+      window.__alboFirmaConferme = 0;
+      return false;
+    }
+    if (window.__alboFirmaPrecedente === firma) {
+      window.__alboFirmaConferme = (window.__alboFirmaConferme || 0) + 1;
+      return window.__alboFirmaConferme >= 2;
+    }
+    window.__alboFirmaPrecedente = firma;
+    window.__alboFirmaConferme = 0;
+    return false;
+    }"""
+)
+
 
 def crea_contesto(playwright: Playwright, headless: bool) -> tuple[Browser, BrowserContext]:
     """Avvia Chromium e crea un contesto con viewport ampio e user agent normale."""
@@ -54,31 +117,26 @@ def apri_tabella(page: Page, url: str | None = None) -> None:
 
 
 def parse_tabella(page: Page) -> list[dict]:
-    """Restituisce una lista di dict, uno per ogni atto presente nella tabella."""
+    """
+    Restituisce una lista di dict, uno per ogni atto presente nella tabella.
+
+    Le righe vengono lette in un solo `evaluate` (JS), invece di fare tre
+    `text_content()` per riga: ognuno era un giro di comunicazione con il browser
+    e su tabelle lunghe dominava il tempo di lettura. `indice_riga` resta la
+    posizione DOM della riga, perché serve ad `apri_modale`.
+    """
+    righe = page.evaluate(_JS_RIGHE_TABELLA)
     risultati = []
-    righe = page.locator(f"{TABELLA_ATTI} tbody tr")
-
-    for i in range(righe.count()):
-        cella = righe.nth(i).locator("td").nth(1)  # colonna "Atti pubblicati"
-
-        # I 3 <strong> contengono, nell'ordine: ente, tipologia, testo dell'atto
-        strong = cella.locator("strong")
-        ente = strong.nth(0).text_content().strip()
-        tipologia = strong.nth(1).text_content().strip()
-        testo = strong.nth(2).text_content().strip()
-
-        m = RE_DATE.search(cella.text_content())
-        data_inizio = parse_data(m.group(1)) if m else None
-        data_fine = parse_data(m.group(2)) if m else None
-
+    for riga in righe:
+        m = RE_DATE.search(riga["testo_cella"] or "")
         risultati.append(
             {
-                "ente_mittente": ente,
-                "tipologia_atto": tipologia,
-                "testo_atto": testo,
-                "data_inizio": data_inizio,
-                "data_fine": data_fine,
-                "indice_riga": i,  # posizione nella tabella, serve per aprire la modale
+                "ente_mittente": riga["ente_mittente"],
+                "tipologia_atto": riga["tipologia_atto"],
+                "testo_atto": riga["testo_atto"],
+                "data_inizio": parse_data(m.group(1)) if m else None,
+                "data_fine": parse_data(m.group(2)) if m else None,
+                "indice_riga": riga["indice"],  # posizione nella tabella, per aprire la modale
             }
         )
 
@@ -252,18 +310,34 @@ def _firma_tabella(page: Page) -> str:
 def _attendi_cambio_pagina(page: Page, prima: str) -> bool:
     """
     Attende (al massimo ATTESA_CAMBIO_PAGINA_MS) che il contenuto della tabella sia diverso
-    da `prima` e resti stabile. Controlla di continuo con gli stessi selettori usati per
-    leggere la tabella, quindi regge sia ai caricamenti AJAX sia ai ricaricamenti di pagina.
+    da `prima` e resti stabile. Il confronto avviene dentro la pagina con
+    `wait_for_function` (polling ogni 250 ms), quindi non c'è un ciclo Python che
+    interroga il browser a ogni giro; regge sia ai caricamenti AJAX sia ai
+    ricaricamenti di pagina.
     """
-    scadenza = time.monotonic() + ATTESA_CAMBIO_PAGINA_MS / 1000
-    while time.monotonic() < scadenza:
-        firma = _firma_tabella(page)
-        if firma and firma != prima:
-            page.wait_for_timeout(500)  # il contenuto deve essere finito di cambiare
-            if _firma_tabella(page) == firma:
-                return True
-        page.wait_for_timeout(300)
-    return False
+    try:
+        page.wait_for_function(
+            _JS_TABELLA_CAMBIATA,
+            arg=prima,
+            polling=250,
+            timeout=ATTESA_CAMBIO_PAGINA_MS,
+        )
+        return True
+    except PlaywrightTimeout:
+        return False
+    except PlaywrightError as e:
+        # Es. contesto JS distrutto da un ricaricamento di pagina: si ripiega sul
+        # vecchio controllo manuale, che tollera le pause della pagina.
+        logger.debug(f"wait_for_function non riuscito ({e}): controllo manuale della tabella")
+        scadenza = time.monotonic() + ATTESA_CAMBIO_PAGINA_MS / 1000
+        while time.monotonic() < scadenza:
+            firma = _firma_tabella(page)
+            if firma and firma != prima:
+                page.wait_for_timeout(500)  # il contenuto deve essere finito di cambiare
+                if _firma_tabella(page) == firma:
+                    return True
+            page.wait_for_timeout(300)
+        return False
 
 
 def salva_istantanea(page: Page, file_html: str, file_png: str) -> None:

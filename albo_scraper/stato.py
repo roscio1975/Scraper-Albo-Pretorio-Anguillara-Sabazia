@@ -9,6 +9,7 @@ from pathlib import Path
 from .log import logger
 
 VERSIONE_STATO = 1
+SALVA_OGNI = 5  # numero di aggiornamenti accumulati prima di riscrivere il file
 
 
 def adesso() -> str:
@@ -19,18 +20,26 @@ class StatoAtti:
     """
     Registro dei documenti già elaborati, indicizzati con `id_documento` (vedi pdf.py).
     Per ogni documento si ricorda: titolo, descrizione, data, file scaricato, riassunto,
-    modello usato e quando. Il file viene riscritto dopo ogni aggiornamento (in modo
-    atomico), così un'esecuzione interrotta non perde il lavoro già fatto.
+    modello usato e quando. Il file viene riscritto ogni `salva_ogni` aggiornamenti (di
+    default SALVA_OGNI, in modo atomico) e comunque alla chiusura dell'esecuzione
+    (vedi `salva()`), così un'esecuzione interrotta non perde il lavoro già fatto.
 
     - percorso=None: stato disattivato (non legge e non scrive nulla).
     - ignora=True: non usa quanto registrato in precedenza (tutto viene rifatto), ma
       continua ad aggiornare il file con i nuovi risultati.
     """
 
-    def __init__(self, percorso: str | Path | None, ignora: bool = False):
+    def __init__(
+        self,
+        percorso: str | Path | None,
+        ignora: bool = False,
+        salva_ogni: int = SALVA_OGNI,
+    ):
         self.percorso = Path(percorso) if percorso else None
         self.ignora = ignora
+        self.salva_ogni = max(1, int(salva_ogni))
         self._documenti: dict[str, dict] = {}
+        self._modifiche = 0  # aggiornamenti non ancora scritti su disco
         self._carica()
 
     def _carica(self) -> None:
@@ -62,11 +71,22 @@ class StatoAtti:
         return self._documenti.get(id_doc)
 
     def aggiorna(self, id_doc: str, **campi: str) -> None:
-        """Aggiunge/aggiorna i campi del documento e salva subito il file."""
+        """
+        Aggiunge/aggiorna i campi del documento. Il file viene riscritto ogni
+        `salva_ogni` aggiornamenti, per non rileggere/riscrivere l'intero JSON per
+        ogni singolo campo; `salva()` forza la scrittura.
+        """
         if not self.percorso:
             return
         self._documenti.setdefault(id_doc, {}).update(campi)
-        self._salva()
+        self._modifiche += 1
+        if self._modifiche >= self.salva_ogni:
+            self._salva()
+
+    def salva(self) -> None:
+        """Scrive subito su disco le modifiche non ancora salvate (no-op se non ce ne sono)."""
+        if self.percorso and self._modifiche:
+            self._salva()
 
     def _salva(self) -> None:
         self.percorso.parent.mkdir(parents=True, exist_ok=True)
@@ -76,4 +96,5 @@ class StatoAtti:
             json.dumps(contenuto, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         temporaneo.replace(self.percorso)  # scrittura atomica
+        self._modifiche = 0
         logger.debug(f"Stato salvato in {self.percorso} ({len(self._documenti)} documenti)")

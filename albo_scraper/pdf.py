@@ -12,6 +12,27 @@ from playwright.sync_api import BrowserContext
 
 from .log import logger, url_sicuro
 
+# Indice dei PDF già presenti in locale, per cartella: {cartella: {id_doc: percorso}}.
+# Ogni cartella viene letta una sola volta per esecuzione, invece di essere riscansionata
+# per ogni documento; l'indice viene aggiornato dopo ogni download e ripulito se un file
+# sparisce o risulta corrotto.
+_indice_pdf: dict[Path, dict[str, Path]] = {}
+_RE_ID_FILE = re.compile(r"\[([^\]]+)\]\.pdf$")
+
+
+def _indice_della_cartella(cartella: Path) -> dict[str, Path]:
+    """Indice {id_doc: percorso} dei PDF in `cartella`, costruito alla prima richiesta."""
+    indice = _indice_pdf.get(cartella)
+    if indice is None:
+        indice = {}
+        for percorso in sorted(cartella.glob("*.pdf")):
+            trovato = _RE_ID_FILE.search(percorso.name)
+            if trovato:
+                indice.setdefault(trovato.group(1), percorso)
+        _indice_pdf[cartella] = indice
+        logger.debug(f"Indice PDF in {cartella}: {len(indice)} file")
+    return indice
+
 
 def nome_file_sicuro(testo: str, max_len: int = 150) -> str:
     """Ripulisce un testo per usarlo come nome file."""
@@ -47,15 +68,17 @@ def trova_pdf_locale(cartella: Path, id_doc: str) -> Path | None:
     """
     Cerca in `cartella` un PDF già scaricato per questo documento: i file sono
     salvati come "<testo atto> - <descrizione> [<id>].pdf". Un file vuoto o
-    corrotto viene ignorato, così verrà riscaricato.
+    corrotto viene ignorato (e tolto dall'indice), così verrà riscaricato.
     """
     if not cartella.is_dir():
         return None
-    for percorso in sorted(cartella.glob("*.pdf")):
-        if percorso.name.endswith(f"[{id_doc}].pdf"):
-            if _e_pdf_valido(percorso):
-                return percorso
-            logger.error(f"File locale non valido, verrà riscaricato: {percorso}")
+    percorso = _indice_della_cartella(cartella).get(id_doc)
+    if percorso is None:
+        return None
+    if _e_pdf_valido(percorso):
+        return percorso
+    logger.error(f"File locale non valido, verrà riscaricato: {percorso}")
+    _indice_della_cartella(cartella).pop(id_doc, None)
     return None
 
 
@@ -100,6 +123,7 @@ def scarica_pdf(
     temporaneo = destinazione.with_name(destinazione.name + ".part")
     temporaneo.write_bytes(contenuto)
     temporaneo.replace(destinazione)  # scrittura atomica: niente file a metà
+    _indice_della_cartella(cartella)[id_doc] = destinazione  # già disponibile ai prossimi atti
     logger.info(f"   scaricato: {destinazione}")
     logger.debug(f"Salvato {destinazione} ({len(contenuto)} byte)")
     return destinazione
