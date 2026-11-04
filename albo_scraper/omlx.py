@@ -27,7 +27,6 @@ def chiedi_a_omlx(
     prompt: str,
     modello: str = MODELLO_OMLX,
     url: str = OMLX_URL,
-    num_ctx: int | None = None,
     temperatura: float | None = None,
     max_caratteri: int | None = MAX_CARATTERI_OMLX,
     max_tokens: int | None = None,
@@ -37,9 +36,8 @@ def chiedi_a_omlx(
     Invia `prompt` al modello Omlx in `url` e restituisce la risposta.
 
     L'API è quella OpenAI-compatibile (`POST {url}/chat/completions`).
-    `num_ctx` è accettato per compatibilità con la chiamata a Ollama, ma l'API
-    OpenAI non lo usa; `max_tokens` limita la lunghezza della risposta e
-    `max_caratteri` tronca il testo restituito.
+    `max_tokens` limita la lunghezza della risposta e `max_caratteri` tronca il
+    testo restituito.
     Con `enable_thinking=False` si evita che i modelli "reasoning" consumino
     tutti i token nel campo `reasoning_content` senza produrre `content`.
 

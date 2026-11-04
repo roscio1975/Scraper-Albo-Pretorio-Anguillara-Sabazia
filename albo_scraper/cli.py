@@ -254,10 +254,6 @@ def _modalita_diario(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     args = _leggi_argomenti(argv)
 
-    # Usage sempre visibile su console (indipendente da --log)
-    print(_crea_parser().format_usage(), end="")
-    print("Usa --help per l'elenco completo delle opzioni.\n")
-
     livello = getattr(logging, args.livello_log.upper())
     configura_logging(
         file_log=args.file_log,
