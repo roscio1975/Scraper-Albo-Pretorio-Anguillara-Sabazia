@@ -178,12 +178,19 @@ separato, quindi la finestra resta reattiva e il log continua a scorrere. Al ter
 tabella» apre nel browser il file prodotto.
 
 - `Ctrl+R` avvia, `Ctrl+O` apre la tabella, `Ctrl+Q` esce.
+- Il cursore parte dal primo campo: si può scrivere subito. `Tab` passa al campo
+  successivo (il modulo scorre da solo per mostrarlo), `Pag↑`/`Pag↓` o la rotellina
+  scorrono il modulo; i tre pulsanti restano sempre visibili in basso.
 - Gli altri argomenti fanno da valori iniziali: ad esempio
   `python scraper_albo.py --tui --provider ollama --modello gemma3:12b`.
 - «Allegati da escludere» accetta una voce per riga, con lo stesso significato di `--escludi`
   (il jolly `*` è supportato: `*matrimonio*`).
 - La TUI richiede la libreria **Textual**, già compresa in `requirements.txt`; se manca, il
   programma lo segnala con il comando da eseguire.
+- Serve un terminale vero (Terminale, iTerm2, VS Code con terminale integrato…). Se lo standard
+  input non è un terminale — pannello di output di un IDE, `--tui < /dev/null`, processo in
+  background — la schermata si disegnerebbe ma non risponderebbe a mouse e tastiera: in quel
+  caso il programma ora esce subito spiegando il motivo.
 
 ### Provider LLM (Omlx / Ollama)
 
