@@ -35,6 +35,7 @@ Moduli:
     mail        invio della tabella finale per mail (SMTP)
     pipeline    flusso principale (stampa_link_pdf)
     debug       modalità debug (HTML/screenshot di tabella, paginazione e modale)
+    tui         interfaccia a schermo intero per impostare i parametri e avviare
     cli         interfaccia da riga di comando
 """
 

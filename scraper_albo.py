@@ -22,6 +22,7 @@ Uso (python scraper_albo.py --help per l'elenco completo):
     python scraper_albo.py --riassumi true --provider ollama --modello gemma3:12b
     python scraper_albo.py --escludi "VISTO CONTABILE PER IMPEGNI"  # altri allegati da escludere
     python scraper_albo.py --escludi "*matrimonio*"                 # jolly, ignora maiuscole
+    python scraper_albo.py --tui                                    # interfaccia a schermo intero
 
 Memoria: i documenti già scaricati e riassunti sono registrati in stato_atti.json e non
 vengono rifatti (--ignora-stato true per rifare tutto, --stato "" per disattivarla).
