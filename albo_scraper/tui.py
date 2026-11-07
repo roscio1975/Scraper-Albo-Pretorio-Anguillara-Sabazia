@@ -11,12 +11,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import sys
 import threading
 import webbrowser
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from rich.text import Text
 from textual import work
@@ -163,6 +164,22 @@ def _data(valore: str, etichetta: str) -> date:
         ) from None
 
 
+def terminale_interattivo(flusso: Any | None = None) -> bool:
+    """
+    Vero se l'input arriva da un terminale (e non da una pipe o da /dev/null).
+
+    Textual ha bisogno di leggere i tasti da un terminale: se lo standard input è
+    rediretto (pannello di output di un IDE, `... < /dev/null`, processo in
+    background) la TUI si disegna ma non risponde né al mouse né alla tastiera.
+    Meglio dirlo subito invece di lasciare una schermata che sembra bloccata.
+    """
+    flusso = flusso if flusso is not None else (getattr(sys, "__stdin__", None) or sys.stdin)
+    try:
+        return bool(flusso is not None and flusso.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
 def costruisci_argv(valori: Mapping[str, Any]) -> list[str]:
     """
     Traduce i valori del modulo (dizionario id -> valore) negli argomenti della CLI.
@@ -293,7 +310,7 @@ class _HandlerRichLog(logging.Handler):
             else:
                 self.app.call_from_thread(self.app._scrivi, testo, record.levelno)
         except Exception:  # noqa: BLE001 - il logging non deve mai far cadere l'app
-            pass
+            return
 
 
 class TuiAlbo(App[None]):
@@ -340,6 +357,11 @@ class TuiAlbo(App[None]):
         color: $text-muted;
     }
 
+    .suggerimento {
+        color: $text-muted;
+        text-style: italic;
+    }
+
     .blocco {
         height: auto;
     }
@@ -378,7 +400,7 @@ class TuiAlbo(App[None]):
         margin-right: 2;
     }
     """
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("ctrl+r", "avvia", "Avvia"),
         ("ctrl+o", "apri_tabella", "Apri tabella"),
         ("ctrl+q", "quit", "Esci"),
@@ -396,6 +418,10 @@ class TuiAlbo(App[None]):
         yield Header()
         with Horizontal(id="corpo"):
             with VerticalScroll(id="modulo"):
+                yield Label(
+                    "Tab: campo successivo · Pag↑↓ o rotellina: scorri",
+                    classes="suggerimento",
+                )
                 yield Label("Modalità", classes="etichetta")
                 yield Select(MODALITA, value="scraping", allow_blank=False, id="modalita")
 
@@ -499,9 +525,28 @@ class TuiAlbo(App[None]):
             self._scrivi(f"Impossibile aprire il file di log: {errore}", logging.ERROR)
         self._aggiorna_modalita()
         self._scrivi(
-            "Imposta i parametri e premi Avvia (Ctrl+R). Ctrl+Q per uscire.",
+            "Imposta i parametri e premi Avvia (Ctrl+R). "
+            "Tab passa da un campo all'altro; Pag↑/Pag↓ o la rotellina scorrono il modulo. "
+            "Ctrl+Q per uscire.",
             logging.INFO,
         )
+        self._focus_primo_campo()
+
+    def _focus_primo_campo(self) -> None:
+        """
+        Mette il cursore sul primo campo compilabile visibile.
+
+        Partire da un pulsante lascia l'impressione che la tastiera non funzioni:
+        si preme Tab e non succede nulla di evidente. Su un campo di testo invece
+        si può scrivere subito, anche se il terminale non riporta i click del mouse.
+        """
+        for campo in self.query("#modulo Input"):
+            nodo = campo
+            while nodo is not None and getattr(nodo, "display", True):
+                nodo = nodo.parent
+            if nodo is None and not campo.disabled:
+                campo.focus()
+                return
         self.query_one("#avvia", Button).focus()
 
     def _applica_iniziali(self) -> None:
@@ -681,4 +726,11 @@ class TuiAlbo(App[None]):
 
 def avvia_tui(args: argparse.Namespace) -> None:
     """Punto di ingresso usato da `cli.main` quando si passa `--tui`."""
+    if not terminale_interattivo():
+        raise SystemExit(
+            "La TUI richiede un terminale interattivo (i tasti devono arrivare al "
+            "programma). Avviala da Terminale, iTerm2 o un altro terminale: dentro "
+            "il pannello di output di un IDE, con l'input rediretto o in background "
+            "la schermata si disegna ma non risponde a mouse e tastiera."
+        )
     TuiAlbo(args).run()
