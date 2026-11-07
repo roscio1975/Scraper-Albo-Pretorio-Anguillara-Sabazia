@@ -86,6 +86,7 @@ esempi:
   python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto
   python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
   python scraper_albo.py --debug true                     salva HTML/screenshot di tabella e modale
+  python scraper_albo.py --tui                            interfaccia a schermo intero per impostare i parametri
   python scraper_albo.py --url https://cloud.urbi.it/...  albo di un altro ente
 """
 
@@ -117,6 +118,11 @@ def _crea_parser() -> argparse.ArgumentParser:
         help="modalità debug: salva HTML e screenshot della tabella (con la paginazione) e "
         "della modale della prima riga, poi esce senza scaricare nulla "
         "(browser visibile se c'è uno schermo)", **bool_kw,
+    )
+    princ.add_argument(
+        "--tui", default=False,
+        help="apre l'interfaccia a schermo intero: imposta i parametri e avvia da lì "
+        "(gli altri argomenti fanno da valori iniziali)", **bool_kw,
     )
     princ.add_argument(
         "--scarica", default=True,
@@ -233,7 +239,7 @@ def _leggi_argomenti(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def _modalita_diario(args: argparse.Namespace) -> None:
+def _modalita_diario(args: argparse.Namespace) -> Path | None:
     """--diario: crea il diario HTML dal file --output, senza fare scraping."""
     logger.info(f"Generazione del diario HTML (input: {args.output}, provider: {args.provider})")
     url = args.omlx_url if args.provider == "omlx" else args.ollama_url
@@ -246,30 +252,23 @@ def _modalita_diario(args: argparse.Namespace) -> None:
         )
     except Exception:
         logger.error("Errore nella generazione del diario HTML", exc_info=True)
-        percorso = None
-    if percorso is None:
-        raise SystemExit(1)  # il motivo è nel log; il codice di uscita serve a script e cron
+        return None
+    return percorso
 
 
-def main(argv: list[str] | None = None) -> None:
-    args = _leggi_argomenti(argv)
-
-    livello = getattr(logging, args.livello_log.upper())
-    configura_logging(
-        file_log=args.file_log,
-        livello_file=livello,
-        console=args.log in ("console", "entrambi"),
-        livello_console=livello,
-        su_file=args.log in ("file", "entrambi"),
-    )
+def _esegui(args: argparse.Namespace) -> Path | None:
+    """
+    Esegue l'operazione scelta da `args` (scraping, diario o debug) e restituisce il
+    file scritto, se c'è. Non configura il logging: lo fa il chiamante, così la TUI
+    può dirottarlo sul proprio pannello.
+    """
     logger.debug(f"Argomenti: {vars(args)}")
 
     if args.diario:
-        _modalita_diario(args)
-        return
+        return _modalita_diario(args)
     if args.debug:
         debug_modale(url=args.url)
-        return
+        return None
 
     llm_url = args.omlx_url if args.provider == "omlx" else args.ollama_url
     atti = stampa_link_pdf(
@@ -298,3 +297,32 @@ def main(argv: list[str] | None = None) -> None:
     if args.invia_mail and not invia_report(Path(percorso)):
         # Il motivo è nel log; il codice di uscita serve a script e cron.
         raise SystemExit(1)
+    return Path(percorso)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _leggi_argomenti(argv)
+
+    if args.tui:
+        try:
+            from .tui import avvia_tui  # import pigro: textual serve solo per la TUI
+        except ImportError as errore:
+            raise SystemExit(
+                f"La TUI richiede la libreria Textual ({errore}): "
+                "installa con `pip install -r requirements.txt`."
+            ) from None
+
+        avvia_tui(args)
+        return
+
+    livello = getattr(logging, args.livello_log.upper())
+    configura_logging(
+        file_log=args.file_log,
+        livello_file=livello,
+        console=args.log in ("console", "entrambi"),
+        livello_console=livello,
+        su_file=args.log in ("file", "entrambi"),
+    )
+    percorso = _esegui(args)
+    if args.diario and percorso is None:
+        raise SystemExit(1)  # il motivo è nel log; il codice di uscita serve a script e cron

@@ -3,3 +3,4 @@ pypdf==5.9.0
 pypdfium2>=4.30
 pytesseract>=0.3.10
 Pillow>=10
+textual>=8.2,<9

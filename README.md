@@ -27,10 +27,11 @@ Su Debian/Ubuntu al posto di brew: `apt install tesseract-ocr tesseract-ocr-ita`
 ```bash
 usage: scraper_albo.py [-h] [--livello-log {debug,info,error}]
                        [--log {console,file,entrambi}] [--debug [true|false]]
-                       [--scarica [true|false]] [--file-log FILE_LOG]
-                       [--output OUTPUT] [--cartella CARTELLA]
-                       [--headless [true|false]] [--url URL] [--dal DAL]
-                       [--al AL] [--max-atti N] [--max-pagine N]
+                       [--tui [true|false]] [--scarica [true|false]]
+                       [--file-log FILE_LOG] [--output OUTPUT]
+                       [--cartella CARTELLA] [--headless [true|false]]
+                       [--url URL] [--dal DAL] [--al AL] [--max-atti N]
+                       [--max-pagine N]
                        [--campo {data_inizio,data_fine,periodo}]
                        [--provider {omlx,ollama}] [--riassumi [true|false]]
                        [--modello MODELLO] [--stato FILE]
@@ -52,6 +53,9 @@ opzioni principali:
                         (con la paginazione) e della modale della prima riga,
                         poi esce senza scaricare nulla (browser visibile se
                         c'è uno schermo) (default: False)
+  --tui [true|false]    apre l'interfaccia a schermo intero: imposta i
+                        parametri e avvia da lì (gli altri argomenti fanno da
+                        valori iniziali) (default: False)
   --scarica [true|false]
                         scarica i PDF (false = stampa solo i link) (default:
                         True)
@@ -115,10 +119,9 @@ altre opzioni:
   --escludi DESCRIZIONE|PATTERN
                         descrizione di un allegato da escludere, come appare
                         nella modale (si può ripetere); il confronto ignora
-                        maiuscole/minuscole e spazi e `*` vale come jolly
-                        (es. "*matrimonio*"); si aggiunge a quelle già
-                        escluse: VISTO CONTABILE PER LIQUIDAZIONI
-                        (default: None)
+                        maiuscole/minuscole e spazi e `*` vale come jolly (es.
+                        "*matrimonio*"); si aggiunge a quelle già escluse:
+                        VISTO CONTABILE PER LIQUIDAZIONI (default: None)
   --diario [true|false]
                         non fa scraping: crea un diario in linguaggio semplice
                         (testo del provider LLM + tabella) a partire dal file
@@ -146,6 +149,7 @@ esempi:
   python scraper_albo.py --diario --output risultati.html diario discorsivo dal file già prodotto
   python scraper_albo.py --livello-log debug --log file   log dettagliato solo su file
   python scraper_albo.py --debug true                     salva HTML/screenshot di tabella e modale
+  python scraper_albo.py --tui                            interfaccia a schermo intero per impostare i parametri
   python scraper_albo.py --url https://cloud.urbi.it/...  albo di un altro ente
 ```
 
@@ -153,6 +157,33 @@ Il risultato è `tabella_atti.html` (cambia nome con `--output`); PDF e log fini
 cartella di lavoro (`download_atti/`, `scraper_albo.log`). Il file di log viene ruotato quando
 supera 5 MB e vengono conservate al massimo 3 copie (`scraper_albo.log.1`, `.2`, `.3`), così
 non cresce all'infinito tra un'esecuzione e l'altra.
+
+### Interfaccia a schermo intero (TUI)
+
+```bash
+python scraper_albo.py --tui
+```
+
+Apre una schermata unica: a sinistra il modulo con tutti i parametri, a destra il log in
+diretta (oltre che sul file di log). La modalità si sceglie in alto:
+
+| Modalità | Cosa fa |
+|---|---|
+| **Scraping** | legge gli atti, scarica i PDF, li riassume (se attivo) e scrive la tabella |
+| **Diario** | crea `diario_atti.html` dalla tabella già prodotta (come `--diario`) |
+| **Debug** | salva HTML e screenshot di tabella e modale (come `--debug`) |
+
+Il modulo mostra solo i campi utili alla modalità scelta. «Avvia» esegue il lavoro in un thread
+separato, quindi la finestra resta reattiva e il log continua a scorrere. Al termine «Apri
+tabella» apre nel browser il file prodotto.
+
+- `Ctrl+R` avvia, `Ctrl+O` apre la tabella, `Ctrl+Q` esce.
+- Gli altri argomenti fanno da valori iniziali: ad esempio
+  `python scraper_albo.py --tui --provider ollama --modello gemma3:12b`.
+- «Allegati da escludere» accetta una voce per riga, con lo stesso significato di `--escludi`
+  (il jolly `*` è supportato: `*matrimonio*`).
+- La TUI richiede la libreria **Textual**, già compresa in `requirements.txt`; se manca, il
+  programma lo segnala con il comando da eseguire.
 
 ### Provider LLM (Omlx / Ollama)
 
