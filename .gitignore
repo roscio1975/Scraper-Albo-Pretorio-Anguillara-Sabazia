@@ -19,3 +19,7 @@ diario_atti.txt
 # Ignore debug files
 debug*
 
+diario_atti.html
+stato_atti.json
+tabella_atti.html
+albo_scraper/Scraper_Albo_Pretorio.code-workspace

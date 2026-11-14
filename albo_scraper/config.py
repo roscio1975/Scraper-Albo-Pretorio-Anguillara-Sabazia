@@ -128,7 +128,7 @@ Usa paragrafi semplici ed elenchi puntati se necessario.
 Ecco i dati (un atto per riga, in formato JSON):
 {dati_atti}
 """
-NUM_CTX_DIARIO_MAX = 16384  # contesto massimo richiesto per il diario (vedi diario.py)
+NUM_CTX_DIARIO_MAX = 32768  # contesto massimo richiesto per il diario (vedi diario.py)
 
 # Intestazione della pagina del diario
 TITOLO_PAGINA_DIARIO = "Diario - Sinistra Italia e AVS"
